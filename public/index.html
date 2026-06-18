@@ -9,11 +9,23 @@
 <body>
   <header class="hero">
     <h1>Steel CAPTCHA Gauntlet</h1>
+    <p class="recipe-kicker" id="recipe-title">Simple impact demo</p>
     <p class="tagline" id="tagline">
       A live, autonomous tour of the <strong>Steel Sessions API</strong>. A Gemini-Flash agent
       drives a real Steel cloud browser through a gauntlet of challenges we own — each flow
       demonstrates one Steel capability, named on screen as it runs.
     </p>
+    <p class="recipe-summary" id="recipe-summary"></p>
+    <div class="launcher">
+      <div>
+        <h2>Choose demo</h2>
+        <div class="recipe-picker" id="recipe-picker"></div>
+      </div>
+      <div class="setup" id="setup-panel">
+        <div class="setup-title" id="setup-title">Checking Steel session...</div>
+        <div class="setup-body" id="setup-body">Pre-warming browser.</div>
+      </div>
+    </div>
     <!-- Architecture line (R14) — filled/confirmed in U9 -->
     <div class="arch" id="arch">
       <span class="node">Netlify static UI</span><span class="arrow">→</span>
@@ -36,7 +48,7 @@
       <iframe class="viewer" id="viewer" title="Live Steel session"></iframe>
 
       <div class="controls">
-        <button class="run" id="run-btn" disabled>Run gauntlet</button>
+        <button class="run" id="run-btn" disabled>Run demo</button>
         <button class="ghost" id="fleet-btn" disabled>Run parallel fleet</button>
       </div>
 

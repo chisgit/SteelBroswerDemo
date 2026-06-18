@@ -9,6 +9,8 @@ const api = (name, body) =>
 
 let FLOWS = {};
 let ROUTES = [];
+let RECIPES = {};
+let activeRecipe = null;
 let session = null;
 const MAX_STEPS = 6; // safety bound per route (U6 recovery counts against this)
 
@@ -16,22 +18,35 @@ init();
 
 async function init() {
   const cat = await fetch("/api/flows").then((r) => r.json());
-  FLOWS = cat.flows; ROUTES = cat.routes;
+  FLOWS = cat.flows;
+  RECIPES = cat.recipes || {};
+  activeRecipe = chooseRecipe(cat);
+  ROUTES = activeRecipe.routes || cat.routes;
+  renderRecipe(activeRecipe);
+  renderRecipePicker();
   renderLegend();
   renderChips();
-  await prewarm();
-  $("run-btn").disabled = false;
-  $("fleet-btn").disabled = false;
+  showSnippet(ROUTES[0]);
+  const ready = await prewarm();
+  $("run-btn").disabled = !ready;
+  $("fleet-btn").disabled = !ready;
   $("run-btn").addEventListener("click", runGauntlet);
   $("fleet-btn").addEventListener("click", runFleet);
 }
 
 async function prewarm() {
   setBanner({ title: "Pre-warming a Steel session…", feature: "sessions.create" });
+  setSetup("Checking Steel session...", "Creating cloud browser before run starts.");
   session = await api("session-create", {});
-  if (session.error) { setBanner({ title: "Steel session failed — check STEEL_API_KEY", feature: "" }); return; }
+  if (session.error) {
+    setBanner({ title: "Steel session failed - check STEEL_API_KEY", feature: "" });
+    setSetup("Add keys, then restart dev server", "$env:STEEL_API_KEY='your-steel-key'\n$env:GEMINI_API_KEY='your-gemini-key'\nnpm run dev -- --port 8888", true);
+    return false;
+  }
   $("viewer").src = session.debugUrl + "?interactive=false&showControls=true";
-  setBanner({ title: "Ready — click Run gauntlet", feature: "session ready" });
+  setBanner({ title: "Ready - click Run demo", feature: "session ready" });
+  setSetup("Ready", "Click Run demo.");
+  return true;
 }
 
 async function runGauntlet() {
@@ -82,6 +97,65 @@ async function runFleet() {
 }
 
 // --- rendering ------------------------------------------------------------
+
+function chooseRecipe(cat) {
+  const requested = new URLSearchParams(window.location.search).get("recipe");
+  return cat.recipes?.[requested] || cat.recipes?.[cat.defaultRecipeId] || {
+    title: "Steel CAPTCHA Gauntlet",
+    routes: cat.routes,
+    summary: "All current demo routes.",
+  };
+}
+
+function renderRecipe(recipe) {
+  const title = $("recipe-title");
+  const summary = $("recipe-summary");
+  if (title) title.textContent = recipe.title || "Steel CAPTCHA Gauntlet";
+  if (summary) summary.textContent = recipe.summary || "";
+}
+
+function setSetup(title, body, isCode = false) {
+  $("setup-title").textContent = title;
+  $("setup-body").innerHTML = isCode ? `<pre>${escapeHtml(body)}</pre>` : escapeHtml(body);
+}
+
+function renderRecipePicker() {
+  const el = $("recipe-picker");
+  if (!el) return;
+  el.innerHTML = "";
+  for (const [id, recipe] of Object.entries(RECIPES)) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "recipe-option";
+    btn.dataset.recipe = id;
+    btn.innerHTML = `<span>${escapeHtml(recipe.title)}</span><small>${escapeHtml(recipe.routes.join(" -> "))}</small>`;
+    btn.addEventListener("click", () => selectRecipe(id));
+    el.appendChild(btn);
+  }
+  markSelectedRecipe();
+}
+
+function selectRecipe(id) {
+  const recipe = RECIPES[id];
+  if (!recipe) return;
+  activeRecipe = recipe;
+  ROUTES = recipe.routes || [];
+  const url = new URL(window.location.href);
+  url.searchParams.set("recipe", id);
+  window.history.replaceState({}, "", url);
+  renderRecipe(recipe);
+  renderLegend();
+  renderChips();
+  showSnippet(ROUTES[0]);
+  markSelectedRecipe(id);
+}
+
+function markSelectedRecipe(selectedId) {
+  const activeId = selectedId || Object.entries(RECIPES).find(([, recipe]) => recipe === activeRecipe)?.[0];
+  document.querySelectorAll(".recipe-option").forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.recipe === activeId);
+  });
+}
 
 function setBanner({ title, feature }) {
   $("banner-title").textContent = title || "";
