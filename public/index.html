@@ -2,10 +2,62 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Steel CAPTCHA Gauntlet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Steel CAPTCHA Gauntlet — a live tour of the Steel Sessions API</title>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <h1>Steel CAPTCHA Gauntlet</h1>
-  <p>Scaffold placeholder — control UI lands in U5/U9.</p>
+  <header class="hero">
+    <h1>Steel CAPTCHA Gauntlet</h1>
+    <p class="tagline" id="tagline">
+      A live, autonomous tour of the <strong>Steel Sessions API</strong>. A Gemini-Flash agent
+      drives a real Steel cloud browser through a gauntlet of challenges we own — each flow
+      demonstrates one Steel capability, named on screen as it runs.
+    </p>
+    <!-- Architecture line (R14) — filled/confirmed in U9 -->
+    <div class="arch" id="arch">
+      <span class="node">Netlify static UI</span><span class="arrow">→</span>
+      <span class="node">Netlify Function (agent loop)</span><span class="arrow">→</span>
+      <span class="node">Steel cloud browser (CDP)</span><span class="arrow">→</span>
+      <span class="node">Gemini Flash (vision)</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- LEFT: live view + banner -->
+    <section class="panel">
+      <div class="banner" id="banner">
+        <span class="play">▶</span>
+        <span id="banner-title">Idle — pre-warming a Steel session…</span>
+        <span class="feature" id="banner-feature"></span>
+      </div>
+      <iframe class="viewer" id="viewer" title="Live Steel session"></iframe>
+
+      <div class="controls">
+        <button class="run" id="run-btn" disabled>Run gauntlet</button>
+        <button class="ghost" id="fleet-btn" disabled>Run parallel fleet</button>
+      </div>
+
+      <div class="chips" id="chips"></div>
+
+      <!-- technical snippet for the active flow (U9 / R14) -->
+      <div class="snippet" id="snippet">
+        <pre id="snippet-code">// the Steel API call for the active flow appears here</pre>
+        <p class="proves" id="snippet-proves"></p>
+        <p class="proves"><a id="snippet-docs" href="#" target="_blank" rel="noopener">Steel docs ↗</a></p>
+      </div>
+    </section>
+
+    <!-- RIGHT: evidence feed + dashboard -->
+    <section class="panel">
+      <h2>Agent evidence</h2>
+      <div class="evidence" id="evidence"></div>
+
+      <h2 style="margin-top:1.2rem">Fleet variance</h2>
+      <div class="dash" id="dash"><p style="color:var(--muted)">Run the parallel fleet to populate.</p></div>
+    </section>
+  </main>
+
+  <script src="/app.js" type="module"></script>
 </body>
 </html>
