@@ -35,12 +35,12 @@ export async function createSession(opts = {}) {
   };
 }
 
-/** Connect Playwright to a live Steel session over CDP (server-side only). */
-export async function connect(websocketUrl) {
-  // steel-sdk returns a ready websocketUrl; if absent, build the connect URL.
+/** Connect Playwright to a live Steel session over CDP (server-side only).
+ *  Pass the session's websocketUrl when known, else a sessionId to build the URL. */
+export async function connect(websocketUrl, sessionId) {
   const ws =
     websocketUrl ||
-    `wss://connect.steel.dev?apiKey=${STEEL_API_KEY}&sessionId=`;
+    `wss://connect.steel.dev?apiKey=${STEEL_API_KEY}&sessionId=${sessionId || ""}`;
   const browser = await chromium.connectOverCDP(ws);
   const context = browser.contexts()[0] || (await browser.newContext());
   const page = context.pages()[0] || (await context.newPage());

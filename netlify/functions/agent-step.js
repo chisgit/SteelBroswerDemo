@@ -16,7 +16,7 @@ export const handler = async (event) => {
     const meta = flowMeta(route);
     const base = baseUrl || BASE || originFrom(event);
 
-    conn = await connect(websocketUrl);
+    conn = await connect(websocketUrl, sessionId);
     const { page } = conn;
 
     const result = await runStep({ page, route, phase, base, sessionId, meta });
@@ -43,8 +43,11 @@ async function runStep({ page, route, phase, base, sessionId, meta }) {
       return hcaptchaStep(page, base, phase, meta);
     case "vision-grid":
       return visionGridStep(page, base, phase);
+    case "bot-wall":
+      return botWallStep(page, base, phase, sessionId, meta);
+    case "mobile-bug":
+      return mobileBugStep(page, base, phase, meta);
     default:
-      // bot-wall + mobile-bug land in U8; until then, navigate + report progress.
       return genericStep(page, base, meta);
   }
 }
@@ -148,6 +151,81 @@ async function visionGridStep(page, base, phase) {
       recovery: pass && isRetry ? "re-classified tiles and re-submitted — recovered" : null,
     }),
     verdicts,
+  };
+}
+
+// Bot-wall (R12d/KTD10): first hit shows the wall → diagnose "blocked as bot" →
+// recover by RELAUNCHING the session with stealthConfig + useProxy (fingerprint/proxy
+// are create-time only), then re-navigate with the stealth marker.
+async function botWallStep(page, base, phase, sessionId, meta) {
+  if (phase === "start") {
+    await page.goto(base + meta.path, { waitUntil: "domcontentloaded" });
+    const walled = await page.$("#wall:not(.hidden)");
+    if (walled) {
+      // Relaunch with stealth + proxy. This returns a NEW session; we hand it back so
+      // the UI re-embeds its debugUrl, and the next step (continue) drives it.
+      const fresh = await relaunchWithStealth(sessionId, { solveCaptcha: true });
+      return {
+        done: false,
+        outcome: "fail",
+        newSession: clientView(fresh),
+        newWebsocketUrl: fresh.websocketUrl,
+        evidence: card({
+          action: `navigate ${meta.path}`,
+          targetSelector: "#wall",
+          verdict: "Access Denied — flagged as bot",
+          outcome: "fail",
+          screenshotThumb: await thumb(page),
+          diagnosis: "request blocked by bot detection (default fingerprint)",
+          recovery: "release session, relaunch with stealthConfig + useProxy",
+        }),
+      };
+    }
+  }
+  // continue: drive the (now stealthed) session through with the stealth marker.
+  await page.goto(base + meta.path + "?stealth=1", { waitUntil: "domcontentloaded" });
+  const through = await page.waitForSelector("#solved", { timeout: 5000 }).then(() => true).catch(() => false);
+  return {
+    done: true,
+    outcome: through ? "recovered" : "fail",
+    evidence: card({
+      action: "re-navigate with stealth fingerprint + proxy",
+      targetSelector: "#content",
+      verdict: through ? "passed the bot wall" : "still blocked",
+      outcome: through ? "recovered" : "fail",
+      screenshotThumb: await thumb(page),
+      recovery: through ? "stealthConfig + useProxy cleared the wall — recovered" : null,
+    }),
+  };
+}
+
+// Mobile-bug (R12e): a mobile-viewport session hits a hidden primary control and
+// recovers via the alternate menu path. (The session is created with mobile dimensions
+// by the fleet/runner; this step finds the working selector.)
+async function mobileBugStep(page, base, phase, meta) {
+  await page.goto(base + meta.path, { waitUntil: "domcontentloaded" });
+  const primaryVisible = await page.isVisible("#primary-continue").catch(() => false);
+  if (primaryVisible) {
+    await page.click("#primary-continue");
+    const done = await page.waitForSelector("#solved:not(.hidden)", { timeout: 3000 }).then(() => true).catch(() => false);
+    return { done: true, outcome: done ? "pass" : "fail",
+      evidence: card({ action: "click #primary-continue (desktop path)", targetSelector: "#primary-continue", outcome: done ? "pass" : "fail", screenshotThumb: await thumb(page) }) };
+  }
+  // primary hidden under mobile viewport → diagnose + recover via alternate.
+  await page.click("#menu-continue").catch(() => {});
+  const done = await page.waitForSelector("#solved:not(.hidden)", { timeout: 3000 }).then(() => true).catch(() => false);
+  return {
+    done: true,
+    outcome: done ? "recovered" : "fail",
+    evidence: card({
+      action: "primary control hidden on mobile → use alternate menu path",
+      targetSelector: "#menu-continue",
+      verdict: done ? "checkout completed via menu" : "alternate path failed",
+      outcome: done ? "recovered" : "fail",
+      screenshotThumb: await thumb(page),
+      diagnosis: "#primary-continue not visible at mobile viewport (display:none)",
+      recovery: done ? "clicked #menu-continue alternate path — recovered" : null,
+    }),
   };
 }
 

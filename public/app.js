@@ -61,8 +61,11 @@ async function runRoute(route) {
     if (res.flowTitle) setBanner({ title: res.flowTitle, feature: res.feature });
     if (res.evidence) addEvidence(res.evidence);
     last = res.outcome || last;
-    // recovery may swap the live session (bot-wall, U8) — re-embed if so
-    if (res.newSession) { session = res.newSession; $("viewer").src = session.debugUrl + "?showControls=true"; }
+    // recovery may swap the live session (bot-wall, U8) — re-embed + carry new ws
+    if (res.newSession) {
+      session = { ...res.newSession, websocketUrl: res.newWebsocketUrl };
+      $("viewer").src = session.debugUrl + "?showControls=true";
+    }
     if (res.done) break;
     phase = "continue";
   }
