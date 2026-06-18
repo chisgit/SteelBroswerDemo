@@ -35,22 +35,31 @@ it needs a deterministic fallback so the finale never hard-fails on stage.
 
 ---
 
+> **State:** vision grid is **already built** in `netlify/functions/agent-step.js` (`visionGridStep`) +
+> `lib/gemini.mjs` (`classifyTiles`). It clicks tiles **by DOM id** (`#tile-N`). This MP is now a
+> harden/verify reference, not a build order.
+
 ## Key Technical Decisions
 
 - **KTD1 — Table-stakes routes use Steel `solveCaptcha` on always-pass TEST keys only** (gotcha #5). Never a
-  real third-party widget — TOS + flake.
-- **KTD2 — Vision grid solved by our agent, not Steel.** Per-tile: screenshot → Gemini-vision classify each
-  tile against the category → click matching tiles by **stable DOM id** (MP1 U6) and/or `computer({action})`
-  coords.
-- **KTD3 — Coordinate-drift mitigation (gotcha #7).** Pin viewport `dimensions` to the screenshot basis; map
-  Gemini tile coords carefully. Provide a deterministic fallback: click by the page's known stable tile ids
-  if coord mapping is uncertain. Climax never hard-fails.
+  real third-party widget — TOS + flake. *(Built: `tokenRoute` in `agent-step.js`.)*
+- **KTD2 — Vision grid solved by our agent, clicked by stable DOM id — NOT coordinates** (master 001 KTD4).
+  Per-tile: screenshot each tile → Gemini-vision classify vs the category → click matching tiles by
+  `#tile-N` selector. *(Built: `agent-step.js:117–155`.)* `sessions.computer({action})` coordinate clicking
+  is **explicitly Deferred** (001 Deferred to Follow-Up) — DOM-id clicks avoid coordinate drift and give
+  clean per-tile evidence. **Correction:** an earlier draft of this doc made coords the primary path; that
+  was wrong and contradicted the decided design + shipped code.
+- **KTD3 — Coordinate drift is avoided, not mitigated** (supersedes the old coord-mapping plan). Because
+  clicks are by DOM id, gotcha #7's coordinate-drift risk does not apply to the built path. The grid page
+  (MP1 U6) keeps stable tile ids; that is the whole mitigation. If a future showcase wants visible
+  `computer({action})` coords, that is deferred work with its own viewport-pinning plan.
 
 ---
 
 ## Implementation Units
 
 ### U1. solveCaptcha table-stakes routes
+- **Model tier:** 🟢 Less-capable — built (`tokenRoute`); navigate + poll `#solved`. **✅ FIXED (2026-06-18)**.
 - **Goal:** Agent walks reCAPTCHA v2 + Turnstile routes via Steel `solveCaptcha`.
 - **Requirements:** R5, R6
 - **Dependencies:** MP1 U3 (captcha page), MP3 (agent loop)
@@ -63,24 +72,25 @@ it needs a deterministic fallback so the finale never hard-fails on stage.
   - Error: `solveCaptcha` no-op/flake → route reports failure cleanly (feeds diagnose, not a crash).
   - `Covers AE: agent walks a CAPTCHA route via solveCaptcha.`
 - **Verification:** both test-key routes pass via the agent + Steel.
+- **Session fix:** Hobby tier doesn't support `solveCaptcha: true`. Changed default to `solveCaptcha: Boolean(body.solveCaptcha)` so caller can opt-in. Session creation now succeeds on free tier.
 
 ### U2. Vision-grid classify + act (climax)
+- **Model tier:** 🟡 Capable — built (`visionGridStep` + `classifyTiles`); hardening is per-tile vision prompt + re-classify reliability. Design decided (DOM-id clicks).
 - **Goal:** Gemini-vision solves the image grid per tile and clicks matching tiles.
 - **Requirements:** R6
 - **Dependencies:** MP1 U6 (grid page), MP3 (loop), U1
 - **Files:** `netlify/functions/lib/vision-grid.js`, `netlify/functions/lib/vision-grid.test.js`
-- **Approach:** Screenshot grid → for each tile, Gemini-vision classifies vs the target category → collect
-  matching tile ids → click via stable id (primary) or `computer({action})` coords (showcase). Pin
-  `dimensions`.
-- **Execution note:** pin viewport to screenshot basis before mapping coords (gotcha #7).
+- **Approach:** Screenshot each tile → Gemini-vision classifies vs the target category → collect matching
+  tile ids → click each via `#tile-N` selector → submit. No coordinates. *(Built: `visionGridStep`.)*
 - **Test scenarios:**
   - Happy: grid with known correct tiles → agent selects exactly the matching set → success.
-  - Error: vision misclassifies a tile → fallback to stable-id deterministic path keeps the climax passing.
-  - Edge: viewport/devicePixelRatio mismatch → coord mapping guarded; id fallback engaged.
+  - Error: vision misclassifies → re-classify on retry (phase=continue) → `recovered` (already coded).
+  - Edge: tiles keep stable ids across loads (MP1 U6) so selector clicks always resolve.
   - Integration: full screenshot→classify→click→win over a real Steel session.
-- **Verification:** climax solves the grid live; fallback proven by forcing a misclassify.
+- **Verification:** climax solves the grid live; re-classify recovery proven by forcing a misclassify.
 
 ### U3. Route title banners
+- **Model tier:** 🟢 Less-capable — UI string driven by `{flowTitle,feature}` from `flows.mjs`. Built in U5; verify.
 - **Goal:** On-screen banner names the Steel feature per active route.
 - **Requirements:** R13
 - **Dependencies:** U1, U2
@@ -96,8 +106,7 @@ it needs a deterministic fallback so the finale never hard-fails on stage.
 
 ## Open Questions
 
-- Click vision-grid tiles by DOM id vs `computer({action})` coords as the *primary* path — default id
-  (robust), use coords as the visible showcase with id fallback.
+- **Resolved:** tiles are clicked by DOM id (001 KTD4, shipped). `computer({action})` coords = Deferred.
 
 ## Scope Boundaries
 

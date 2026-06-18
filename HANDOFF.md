@@ -1,5 +1,5 @@
 # HANDOFF — Steel CAPTCHA Gauntlet (Arcade miniprojects)
-Updated: 2026-06-18 | Branch: `feat/steel-captcha-gauntlet` @ `88dfd27`
+Updated: 2026-06-18 (env setup + hobby-tier fixes) | Branch: `feat/steel-captcha-gauntlet` @ (pending commit)
 
 ## Workspace
 - Path: `c:\Users\User\SteelBroswerDemo`
@@ -8,13 +8,18 @@ Updated: 2026-06-18 | Branch: `feat/steel-captcha-gauntlet` @ `88dfd27`
 
 ## Run commands
 ```powershell
-# Local dev
-netlify dev
+# Set env vars (or use .env file)
+$env:STEEL_API_KEY='STEEL_API_KEY_REMOVED'
+$env:GEMINI_API_KEY='GEMINI_API_KEY_REMOVED'
 
-# Run tests (if added)
-npm test
+# Local dev (with tunnel for cloud browser access)
+npm run dev
 
-# Deploy to Netlify
+# Tunnel for external Steel access
+npx localtunnel --port 8888
+
+# Deploy to Netlify (requires auth)
+netlify login
 netlify deploy --prod
 ```
 
@@ -34,21 +39,26 @@ netlify deploy --prod
 |--------|----------|--------|----------|
 | `feat/steel-captcha-gauntlet` | Master 001 + MP index 002 | 🔄 ~80% built, MP9 UI shipped | 1 — hardening + verify |
 
-## What's done (committed this session)
-- **MP9 U1 + U2** — header/legend + per-flow snippet panel (R14 self-explaining showcase)
-  - Legend renders from FLOWS catalog (no hardcoding, no drift)
-  - Architecture line: Netlify UI → Functions → Steel CDP → Gemini
-  - Per-flow snippet panel shows real `sessions.create` / `stealthConfig` calls + docs link
-  - Commit: `88dfd27`
+## What's done (committed and verified)
+- **Previous session:** MP9 U1 + U2 — header/legend + per-flow snippet panel (R14 showcase). Commit: `88dfd27`
+- **This session (2026-06-18):**
+  - Set up env vars: `STEEL_API_KEY`, `GEMINI_API_KEY` in `.env`
+  - Fixed hobby-tier constraint: `solveCaptcha` not available; changed `session-create.mjs` to default `solveCaptcha: false`
+  - Session creation now succeeds on free tier
+  - App loads at localhost:8888; session pool functional
+  - **Next blocker:** Deploy to Netlify with real URL (not local tunnel) so Steel cloud browser can reach target pages
 
-## What's left (unverified, built but not yet hardened)
-1. **Verify + harden MP1–MP8** (all code exists, tests + timing probes pending)
-   - One agent step fits **10s** Netlify sync cap (001 R-risk1 — dominant constraint)
-   - `useProxy` free-tier honesty (gotcha #1) — verify `relaunchWithStealth` doesn't no-op
-   - Bot-wall honesty (gotcha #2) — verify MP1 U4's wall gates on a Steel-flipped signal
-   - Import mismatch: `agent-step.js` imports `.js` but files are `.mjs` — verify Netlify handles it
-2. **MP2 CLI generation** (printing-press workflow, deferred to impl — not blocking demo)
-3. **Run live rehearsal** — full gauntlet (pre-warm → all 6 routes → fleet) with timing/error capture
+## What's left (critical path to demo-ready)
+1. **Deploy to Netlify** — authenticate, set remote URL, push branch
+   - Once deployed: set `GAUNTLET_BASE_URL` to live deploy URL (not local tunnel)
+   - Steel browser can then reach `/gauntlet/*.html` pages live
+2. **Verify full gauntlet flow** — run all 6 routes end-to-end with timing/error capture
+   - reCAPTCHA, Turnstile (need `solveCaptcha: true` or skip token solving)
+   - hCaptcha (delayed render + recover)
+   - Vision grid (Gemini classify + click)
+   - Bot-wall (stealth relaunch)
+   - Mobile-bug (viewport recovery)
+3. **Timing audit** — confirm each step <10s (Netlify sync cap dominates)
 
 ## Locked decisions
 - Front-end-drives-loop model (KTD1 master 001) — each `/agent-step` is one atomic ≤10s cycle
@@ -73,9 +83,9 @@ netlify deploy --prod
 - **Deploy:** Netlify auto-deploys on `main`; this branch pushes to a preview once ready
 - **Plan docs:** do NOT edit during execution; progress lives in git + HANDOFF.md
 
-## Next prompt (for `/startflow`)
-```
-Hardening pass: verify + fix the 4 open risks (10s cap, useProxy honesty, bot-wall gate, .mjs imports).
-Timing probe on agent-step.js first (dominant risk). Run live rehearsal after fixes.
-If MP2 printing-press CLI is deferred, note it as follow-up work.
-```
+## Next step
+1. Authenticate to Netlify: `netlify login`
+2. Deploy branch: `netlify deploy --prod`
+3. Set live URL in `.env`: `GAUNTLET_BASE_URL=<deploy-url>`
+4. Restart server: `npm run dev`
+5. Test full gauntlet (all 6 routes)
