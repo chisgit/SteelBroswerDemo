@@ -6,15 +6,24 @@
 **Origin:** `docs/brainstorms/2026-06-18-steel-reliability-arcade-requirements.md`
 **Index:** `docs/plans/2026-06-18-002-feat-arcade-miniprojects-index-plan.md`
 **R-IDs:** R2, R5, R11, R12 · **Depends on:** none
+**Live target:** **Math Arcade Wrecker** — already deployed at `matharcardewrecker.netlify.app` (our own site).
 
 ---
 
 ## Summary
 
-A small self-contained game/task web app we own, served as static pages from the Netlify deploy. It is the
-arena the Steel agent drives. It is **broken on purpose** in five escalating, *plausible-looking* ways
-(failure modes a–e) so the agent has something real to fail at, diagnose, and recover from. Ethics line:
-every CAPTCHA/login/wall here is **ours** — no third-party site is ever automated.
+The target game already exists and is deployed: **Math Arcade Wrecker** (`matharcardewrecker.netlify.app`),
+our own site. MP1 is therefore **instrument-an-existing-site**, not greenfield: add the five staged,
+*plausible-looking* failure modes (a–e) plus the gauntlet routes (provider widgets on test keys + vision
+image-grid + simulated bot wall) onto the live game so the Steel agent has something real to fail at,
+diagnose, and recover from. Ethics line: every CAPTCHA/login/wall here is **ours** — no third-party site is
+automated.
+
+**Adjust before building:** confirm where the deployed game's source lives (this repo's `public/`, or a
+separate repo for `matharcardewrecker.netlify.app`). If separate, MP1's file paths below target that repo
+(state it at top per planning rules) — the failure-mode knobs and routes get added there, and the Steel
+demo app points at that URL. The `public/arcade/` tree below is the layout *if* the game source is brought
+into this repo; if not, mirror these units onto the existing site's structure.
 
 ---
 
@@ -28,7 +37,7 @@ CEO, while staying fully under our control (so recovery is honest and ethical).
 
 ## Requirements
 
-- **R2** — Site reachable + drivable with no terminal; static-served from the Netlify app.
+- **R2** — Site reachable + drivable with no terminal; already live at `matharcardewrecker.netlify.app`.
 - **R5** — Multi-route gauntlet host: mounts reCAPTCHA v2 + Turnstile (test keys) + our vision image-grid.
 - **R11** — Ethics: own-site only; provider widgets use official always-pass TEST keys.
 - **R12** — Hosts failure modes (d) bot wall and (e) mobile-only layout bug.

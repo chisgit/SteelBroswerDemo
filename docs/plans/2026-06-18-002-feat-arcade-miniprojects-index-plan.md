@@ -35,7 +35,7 @@ otherwise lose.
 
 | # | Plan doc | Cluster | Primary R-IDs | Depends on |
 |---|----------|---------|---------------|------------|
-| MP1 | `2026-06-18-003-feat-mp1-target-site-plan.md` | Target site (own broken-on-purpose game + failure modes a–e) | R2, R5, R11, R12 | — |
+| MP1 | `2026-06-18-003-feat-mp1-target-site-plan.md` | Target site — instrument live **Math Arcade Wrecker** (`matharcardewrecker.netlify.app`) w/ failure modes a–e | R2, R5, R11, R12 | — |
 | MP2 | `2026-06-18-004-feat-mp2-session-lifecycle-cli-plan.md` | Steel session lifecycle **via printing-press CLI** | R4, R10 | — |
 | MP3 | `2026-06-18-005-feat-mp3-agent-loop-plan.md` | Gemini agent observe→act loop | R4 | MP1, MP2 |
 | MP4 | `2026-06-18-006-feat-mp4-viewer-plan.md` | Live `debugUrl` iframe + recorded `sessionViewerUrl` | R7 | MP2 |
