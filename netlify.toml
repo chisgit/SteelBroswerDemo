@@ -1,0 +1,22 @@
+# Steel CAPTCHA Gauntlet — Netlify config
+# Static UI in public/, serverless agent in netlify/functions/.
+
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  # Functions bundle with esbuild; node 22 runtime.
+  node_bundler = "esbuild"
+
+# Friendly function path: /api/* -> /.netlify/functions/*
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPA-ish fallback for the control UI (gauntlet routes are real files, served first).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

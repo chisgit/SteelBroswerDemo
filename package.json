@@ -1,0 +1,19 @@
+{
+  "name": "steel-captcha-gauntlet",
+  "version": "0.1.0",
+  "description": "A live, self-explaining tour of the Steel Sessions API — interview demo.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo 'static site — no build step'"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "playwright-core": "^1.48.0",
+    "steel-sdk": "^0.6.0"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.0.0"
+  }
+}
