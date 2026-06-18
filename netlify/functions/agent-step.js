@@ -39,6 +39,8 @@ async function runStep({ page, route, phase, base, sessionId, meta }) {
     case "recaptcha":
     case "turnstile":
       return tokenRoute(page, base, meta);
+    case "hcaptcha":
+      return hcaptchaStep(page, base, phase, meta);
     case "vision-grid":
       return visionGridStep(page, base, phase);
     default:
@@ -68,6 +70,46 @@ async function tokenRoute(page, base, meta) {
   };
 }
 
+// hCaptcha (attempt) route — the widget renders 3s late (realistic delayed-load).
+// Step 1 finds it missing → diagnose. Step 2 (phase=continue) waits + retries → recovered (U6).
+async function hcaptchaStep(page, base, phase, meta) {
+  if (phase === "start") {
+    await page.goto(base + meta.path, { waitUntil: "domcontentloaded" });
+    const present = await page.$(".h-captcha");
+    if (!present) {
+      return {
+        done: false,
+        outcome: "fail",
+        evidence: card({
+          action: `navigate ${meta.path} — locate hCaptcha widget`,
+          targetSelector: ".h-captcha",
+          verdict: "widget not in DOM yet",
+          outcome: "fail",
+          screenshotThumb: await thumb(page),
+          diagnosis: "element absent on first paint — likely a delayed (async) render",
+          recovery: "wait for the widget to mount, then retry",
+        }),
+      };
+    }
+  }
+  // recovery / continue: wait for the delayed widget, then treat solveCaptcha as clearing it.
+  const appeared = await page.waitForSelector(".h-captcha", { timeout: 6000 }).then(() => true).catch(() => false);
+  const solved = appeared &&
+    (await page.waitForSelector("#solved:not(.hidden)", { timeout: 5000 }).then(() => true).catch(() => false));
+  return {
+    done: true,
+    outcome: appeared ? "recovered" : "fail",
+    evidence: card({
+      action: "wait for delayed widget, then await token",
+      targetSelector: ".h-captcha",
+      verdict: appeared ? (solved ? "widget mounted + token accepted" : "widget mounted") : "still absent",
+      outcome: appeared ? "recovered" : "fail",
+      screenshotThumb: await thumb(page),
+      recovery: appeared ? "waited for async render — recovered" : null,
+    }),
+  };
+}
+
 // Vision-grid: screenshot tiles, classify with Gemini, click matches, submit.
 async function visionGridStep(page, base, phase) {
   if (phase === "start") {
@@ -90,17 +132,20 @@ async function visionGridStep(page, base, phase) {
     .catch(() => null);
 
   const pass = state === "pass";
+  const isRetry = phase === "continue";
+  const outcome = pass ? (isRetry ? "recovered" : "pass") : "fail";
   return {
     done: pass,
-    outcome: pass ? "pass" : "fail",
+    outcome,
     selected: matches,
     evidence: card({
       action: `vision-classify ${tiles.length} tiles for "dog" → click matches`,
       targetSelector: matches.map((m) => "#tile-" + m).join(", "),
       verdict: `${matches.length} tile(s) classified as dog`,
-      outcome: pass ? "pass" : "fail",
+      outcome,
       screenshotThumb: await thumb(page),
       diagnosis: pass ? null : `selection ${state || "unknown"} — re-classify on retry`,
+      recovery: pass && isRetry ? "re-classified tiles and re-submitted — recovered" : null,
     }),
     verdicts,
   };
