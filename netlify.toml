@@ -6,8 +6,11 @@
   functions = "netlify/functions"
 
 [functions]
-  # Functions bundle with esbuild; node 22 runtime.
+  # Functions are ESM (.mjs); bundle with esbuild on node 22.
   node_bundler = "esbuild"
+  # playwright-core lazy-requires these; mark external so esbuild doesn't choke at
+  # bundle time (they're resolved at runtime from node_modules).
+  external_node_modules = ["playwright-core", "chromium-bidi"]
 
 # Friendly function path: /api/* -> /.netlify/functions/*
 [[redirects]]

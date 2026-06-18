@@ -1,10 +1,10 @@
 // The agent loop's atomic step (KTD1): exactly one observe->decide->act cycle,
 // returns structured state so the front-end can loop (U5). One screenshot + at most
 // one model call + one action per invocation to stay under the 10s free-tier cap.
-import { createSession, connect, release, relaunchWithStealth, clientView } from "./lib/steel.js";
-import { flowMeta } from "./lib/flows.js";
-import { classifyTiles } from "./lib/gemini.js";
-import { card, thumb } from "./lib/evidence.js";
+import { createSession, connect, release, relaunchWithStealth, clientView } from "./lib/steel.mjs";
+import { flowMeta } from "./lib/flows.mjs";
+import { classifyTiles } from "./lib/gemini.mjs";
+import { card, thumb } from "./lib/evidence.mjs";
 
 const BASE = process.env.GAUNTLET_BASE_URL || "";
 

@@ -2,9 +2,9 @@
 // each on a DIFFERENT route so the dashboard shows honest variance — not N copies of
 // one task. The mobile-bug agent runs on a mobile `dimensions` viewport so its failure
 // is genuinely different. Bounded per-route so the whole batch fits the time budget.
-import { createSession, connect, release } from "./lib/steel.js";
-import { classifyTiles } from "./lib/gemini.js";
-import { flowMeta } from "./lib/flows.js";
+import { createSession, connect, release } from "./lib/steel.mjs";
+import { classifyTiles } from "./lib/gemini.mjs";
+import { flowMeta } from "./lib/flows.mjs";
 
 // Keep within Steel Hobby concurrency (~5) and the function time budget.
 const FLEET = [

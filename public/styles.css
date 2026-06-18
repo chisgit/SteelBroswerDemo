@@ -36,6 +36,15 @@ header.hero {
 }
 .arch .arrow { color: var(--accent); }
 
+.legend { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.legend-item {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 0.4rem 0.65rem;
+}
+.legend-item .lname { font-weight: 600; font-size: 0.85rem; }
+.legend-item .lfeat { font-size: 0.72rem; color: var(--accent); }
+
 main {
   display: grid;
   grid-template-columns: 1.3fr 1fr;

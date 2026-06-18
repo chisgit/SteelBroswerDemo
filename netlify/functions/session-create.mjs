@@ -1,6 +1,6 @@
 // Pre-warm a Steel session on page load (KTD3) so cold-start doesn't eat the
 // per-step 10s budget. Returns only the client-safe view (KTD2 / R10).
-import { createSession, clientView } from "./lib/steel.js";
+import { createSession, clientView } from "./lib/steel.mjs";
 
 export const handler = async (event) => {
   try {

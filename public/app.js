@@ -17,6 +17,7 @@ init();
 async function init() {
   const cat = await fetch("/api/flows").then((r) => r.json());
   FLOWS = cat.flows; ROUTES = cat.routes;
+  renderLegend();
   renderChips();
   await prewarm();
   $("run-btn").disabled = false;
@@ -92,6 +93,17 @@ function showSnippet(route) {
   $("snippet-code").textContent = m.apiSnippet;
   $("snippet-proves").textContent = m.proves;
   $("snippet-docs").href = m.docsUrl;
+}
+
+function renderLegend() {
+  const el = $("legend");
+  if (!el) return;
+  el.innerHTML = ROUTES.map((r) => {
+    const m = FLOWS[r];
+    const name = m.title.split(" — ")[0];
+    return `<div class="legend-item"><span class="lname">${escapeHtml(name)}</span>
+      <span class="lfeat mono">${escapeHtml(m.feature)}</span></div>`;
+  }).join("");
 }
 
 function renderChips() {
