@@ -5,8 +5,9 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "setup": "node scripts/download-gauntlet-images.mjs",
     "dev": "netlify dev",
-    "build": "echo 'static site — no build step'"
+    "build": "node scripts/download-gauntlet-images.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

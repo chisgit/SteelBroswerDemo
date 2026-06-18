@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gauntlet · Bot wall</title>
+  <link rel="stylesheet" href="/gauntlet/gauntlet.css" />
+</head>
+<body>
+  <div class="card">
+    <div class="route-tag">Route · Bot-detection wall</div>
+
+    <!-- Default: the wall. Our own page modeling a real "prevention-first" block.
+         Reveals #content only when reached with a stealth marker — which a Steel
+         session relaunched with stealthConfig + useProxy carries (?stealth=1). -->
+    <div id="wall">
+      <h1 class="denied">Access Denied</h1>
+      <p class="sub">Automated traffic detected. This request was flagged as a bot.</p>
+      <p class="sub">Retry from a clean fingerprint to continue.</p>
+    </div>
+
+    <div id="content" class="hidden">
+      <h1>Welcome back 👋</h1>
+      <p class="sub">Fingerprint looks human. You're through.</p>
+      <div id="solved" class="solved">✓ Passed the bot wall via stealth + proxy</div>
+    </div>
+  </div>
+
+  <script>
+    // Stealth marker check. A relaunched Steel session (stealthConfig + useProxy)
+    // navigates here with ?stealth=1; the first, un-stealthed session does not.
+    const params = new URLSearchParams(location.search);
+    if (params.get("stealth") === "1") {
+      document.getElementById("wall").classList.add("hidden");
+      document.getElementById("content").classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>

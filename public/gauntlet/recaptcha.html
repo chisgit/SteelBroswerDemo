@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gauntlet · reCAPTCHA v2</title>
+  <link rel="stylesheet" href="/gauntlet/gauntlet.css" />
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+</head>
+<body>
+  <div class="card">
+    <div class="route-tag">Route · reCAPTCHA v2</div>
+    <h1>Verify you're human</h1>
+    <p class="sub">Real Google reCAPTCHA v2 widget (official test site key). Steel's
+      <code>solveCaptcha</code> clears the token.</p>
+
+    <form class="challenge" onsubmit="return onSubmit(event)">
+      <!-- 6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI is Google's documented
+           ALWAYS-PASS test site key for dev. No signup, deterministic. -->
+      <div class="g-recaptcha"
+           data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+           data-callback="onToken"></div>
+      <br />
+      <button class="primary" type="submit">Continue</button>
+    </form>
+
+    <div id="solved" class="solved hidden">✓ Verified — token accepted</div>
+  </div>
+
+  <script>
+    // The agent watches for #solved (revealed on a valid token).
+    window.onToken = function () {
+      document.getElementById("solved").classList.remove("hidden");
+    };
+    function onSubmit(e) {
+      e.preventDefault();
+      // If the token already fired, this is a no-op; success is the #solved node.
+      const resp = (window.grecaptcha && grecaptcha.getResponse()) || "";
+      if (resp) document.getElementById("solved").classList.remove("hidden");
+      return false;
+    }
+  </script>
+</body>
+</html>

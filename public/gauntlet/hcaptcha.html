@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gauntlet · hCaptcha</title>
+  <link rel="stylesheet" href="/gauntlet/gauntlet.css" />
+  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+</head>
+<body>
+  <div class="card">
+    <div class="route-tag">Route · hCaptcha (attempt)</div>
+    <h1>Are you human?</h1>
+    <p class="sub">Real hCaptcha (official test sitekey). Not on Steel's confirmed
+      auto-solve list — an honest "attempt" route, with a 3s delayed render to exercise
+      the diagnose→recover arc.</p>
+
+    <div class="challenge">
+      <!-- Renders only after ~3s: realistic delayed-load failure mode (not 404/throw). -->
+      <div id="widget-slot"></div>
+    </div>
+
+    <div id="solved" class="solved hidden">✓ Verified — hCaptcha token accepted</div>
+  </div>
+
+  <script>
+    window.onToken = function () {
+      document.getElementById("solved").classList.remove("hidden");
+    };
+    // Delayed render: the widget appears 3s after load.
+    setTimeout(function () {
+      const slot = document.getElementById("widget-slot");
+      slot.innerHTML =
+        '<div class="h-captcha" data-sitekey="10000000-ffff-ffff-ffff-000000000001" data-callback="onToken"></div>';
+      if (window.hcaptcha && hcaptcha.render) {
+        try { hcaptcha.render(slot.firstChild); } catch (_) {}
+      }
+    }, 3000);
+  </script>
+</body>
+</html>

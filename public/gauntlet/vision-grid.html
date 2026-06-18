@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gauntlet · Vision grid</title>
+  <link rel="stylesheet" href="/gauntlet/gauntlet.css" />
+</head>
+<body>
+  <div class="card">
+    <div class="route-tag">Route · Vision grid (agent solves)</div>
+    <h1 id="prompt">Select all images with a <span class="accent">DOG</span></h1>
+    <p class="sub">Not a Steel auto-solve — our Gemini-vision agent classifies each tile
+      and clicks the matches. This is the "my agent can see and act" flex.</p>
+
+    <div id="grid" class="grid" aria-label="image challenge grid"></div>
+
+    <!-- Renamed/non-obvious class on the submit control: realistic selector drift. -->
+    <button id="verify-btn" class="primary ctl-confirm" onclick="submitGrid()">Verify</button>
+
+    <div id="grid-result" class="solved hidden"></div>
+  </div>
+
+  <script>
+    let MANIFEST = [];
+    const TARGET = "dog";
+    const selected = new Set();
+
+    async function load() {
+      const res = await fetch("/gauntlet/images/manifest.json");
+      MANIFEST = await res.json();
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      MANIFEST.forEach((tile) => {
+        const img = document.createElement("img");
+        img.id = "tile-" + tile.id;            // stable selector for DOM clicks (KTD4)
+        img.src = "/gauntlet/images/" + tile.file;
+        img.alt = "tile " + tile.id;           // NO label leaked in alt — agent must SEE it
+        img.dataset.label = tile.label;        // page self-check + server manifest only
+        img.addEventListener("click", () => toggle(tile.id, img));
+        grid.appendChild(img);
+      });
+    }
+    function toggle(id, img) {
+      if (selected.has(id)) { selected.delete(id); img.classList.remove("selected"); }
+      else { selected.add(id); img.classList.add("selected"); }
+    }
+    function submitGrid() {
+      const correct = new Set(MANIFEST.filter((t) => t.label === TARGET).map((t) => t.id));
+      const ok = selected.size === correct.size && [...selected].every((id) => correct.has(id));
+      const el = document.getElementById("grid-result");
+      el.classList.remove("hidden");
+      if (ok) { el.textContent = "✓ Correct — all dogs selected"; el.classList.remove("denied"); }
+      else { el.textContent = "✗ Wrong selection — try again"; el.classList.add("denied"); }
+      el.dataset.state = ok ? "pass" : "fail";  // agent reads #grid-result[data-state]
+    }
+    load();
+  </script>
+</body>
+</html>

@@ -2,3 +2,7 @@ node_modules/
 .env
 .netlify/
 .playwright-mcp/
+public/gauntlet/images/*.jpg
+public/gauntlet/images/*.png
+public/gauntlet/images/*.svg
+public/gauntlet/images/manifest.json

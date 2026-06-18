@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gauntlet · Mobile bug</title>
+  <link rel="stylesheet" href="/gauntlet/gauntlet.css" />
+  <style>
+    /* The "bug": the primary control is hidden on narrow (mobile) viewports.
+       A desktop session sees + clicks #primary-continue directly. A mobile
+       `dimensions` session must recover via the alternate #menu-continue path. */
+    @media (max-width: 600px) {
+      #primary-continue { display: none !important; }
+      #mobile-menu { display: block !important; }
+    }
+    #mobile-menu { display: none; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="route-tag">Route · Mobile-only layout bug</div>
+    <h1>Complete checkout</h1>
+    <p class="sub">The primary button is hidden under a mobile viewport
+      (<code>dimensions</code>). The agent diagnoses the missing selector and recovers
+      via the alternate menu path.</p>
+
+    <button id="primary-continue" class="primary" onclick="finish()">Continue</button>
+
+    <div id="mobile-menu">
+      <p class="sub">☰ Menu</p>
+      <button id="menu-continue" class="primary" onclick="finish()">Continue (via menu)</button>
+    </div>
+
+    <div id="solved" class="solved hidden">✓ Checkout completed</div>
+  </div>
+
+  <script>
+    function finish() {
+      document.getElementById("solved").classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>

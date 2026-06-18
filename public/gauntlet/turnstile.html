@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gauntlet · Cloudflare Turnstile</title>
+  <link rel="stylesheet" href="/gauntlet/gauntlet.css" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <div class="card">
+    <div class="route-tag">Route · Cloudflare Turnstile</div>
+    <h1>Confirm you're human</h1>
+    <p class="sub">Real Turnstile widget (official always-pass test sitekey). On Steel's
+      verified <code>solveCaptcha</code> list.</p>
+
+    <div class="challenge">
+      <!-- 1x00000000000000000000AA = Cloudflare's documented always-pass test sitekey. -->
+      <div class="cf-turnstile"
+           data-sitekey="1x00000000000000000000AA"
+           data-callback="onToken"></div>
+    </div>
+
+    <div id="solved" class="solved hidden">✓ Verified — Turnstile token accepted</div>
+  </div>
+
+  <script>
+    window.onToken = function () {
+      document.getElementById("solved").classList.remove("hidden");
+    };
+  </script>
+</body>
+</html>
