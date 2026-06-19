@@ -1,5 +1,5 @@
 # HANDOFF — Steel Demo Hub
-Updated: 2026-06-18 21:45 | Branch: `feat/steel-captcha-gauntlet` @ `23dc7d5`
+Updated: 2026-06-18 | Branch: `feat/persistent-session-math-arcade` @ `0e17ee0`
 
 ## Workspace
 - Path: `c:\Users\User\SteelBroswerDemo`
@@ -8,7 +8,7 @@ Updated: 2026-06-18 21:45 | Branch: `feat/steel-captcha-gauntlet` @ `23dc7d5`
 ## Run commands
 ```powershell
 # Local dev
-npm run dev
+npx netlify dev --port 8888
 
 # Deploy to production
 npx netlify deploy --prod
@@ -32,52 +32,39 @@ npx netlify deploy --prod
 ## Active branches
 | Branch | Plan doc | Status | Priority |
 |--------|----------|--------|----------|
-| `feat/steel-captcha-gauntlet` | [docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md](docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md) | ✅ PR #1 merged, changes live | 1 — smoke test + demo rehearsal |
+| `feat/persistent-session-math-arcade` | [docs/plans/2026-06-18-012-feat-persistent-session-math-arcade-plan.md](docs/plans/2026-06-18-012-feat-persistent-session-math-arcade-plan.md) | ✅ shipped — tested, pushed, ready to PR | 1 — merge to main |
+| `feat/stockpredictor-demo` | [docs/plans/2026-06-18-013-feat-stockpredictor-demo-plan.md](docs/plans/2026-06-18-013-feat-stockpredictor-demo-plan.md) | 🔄 parallel agent in progress | 2 — in flight |
 
-## What's done
-- Full gauntlet: 6 routes implemented (hCaptcha, vision-grid, bot-wall, mobile-bug, recaptcha/turnstile skipped on hobby)
-- Vision classifier: NVIDIA MiniMax-M3 (faster, reliable free tier) via `lib/nvidia.mjs`
-- Live Steel SDK console: every `sessions.create`, `chromium.connectOverCDP`, `sessions.release` call streams to UI in real time with call-count badge
-- Integration snippet panel: real `sessions.create({...})` code from `flows.mjs` updates per active route
-- `popLog()` wired into `agent-step.mjs` + `session-create.mjs` — SDK calls reach client
-- Hub (`index.html`) sharpened: actual Steel API methods in hero copy + card descriptions
-- Deployed live: https://steeldemo.netlify.app
-- Gemini API timeout: 8s `Promise.race` guard in `lib/gemini.mjs` prevents hanging on slow API calls
-- SDK cleanup: removed invalid `stealthConfig` param; session creation only passes valid Steel SDK params (`solveCaptcha`, `useProxy`, `blockAds`, `dimensions`, `userAgent`, `region`)
-- `.claude/skills/steel-developer` symlink restored to `.agents/` after filter-repo scrub
-- Git history scrubbed of committed API keys (GEMINI_API_KEY, STEEL_API_KEY) via `git-filter-repo`
-
-## What's next
-1. ~~**Smoke test live** — open https://steeldemo.netlify.app → run Simple Impact + Vision Only → verify API console shows real SDK calls streaming in~~ ✅ **Done (2026-06-18) — both tests passed. API console shows real sessions.create + connectOverCDP calls; evidence log populates; demo completes.**
-2. **Demo rehearsal** — run Full Gauntlet end to end; check timing, evidence cards, fleet variance
-3. **Merge to main** when ready for final demo URL (currently working on `feat/steel-captcha-gauntlet`)
-4. **Sync.agents/ update** — if skill content in `.agents/skills/steel-developer/` drifts from `.claude/`, update both paths (they share by symlink)
+## What's done (this session)
+- **Math Arcade persistent session demo** — 5-phase lifecycle working end-to-end:
+  - `start`: navigate matharcadewrecker.netlify.app, `app.loadGame('match')`, flip 4 cards, capture score
+  - `detach`: `browser.close()` only — session alive in Steel cloud, JS heap preserved
+  - `other-work`: serverless `fetch()` to Wikipedia Card_game (no Steel session), 3s pause
+  - `resume`: `connectOverCDP(same sessionId)` → score matches → heap intact ✓
+  - `finish`: play remaining cards, `sessions.release()`
+- **429 auto-recovery**: `createSession` catches 429, calls `sessions.releaseAll()`, retries once
+- **Phase-labeled CDP logs**: `connect(ws, id, label)` — each phase logs `chromium.connectOverCDP (start/detach/resume)`
+- **`other-work` isolated**: no Steel session, no CDP — `agent (no Steel session)` log entries visibly distinct
+- **Local test**: `http://localhost:8888/gauntlet-ui.html?recipe=persistent-session`
 
 ## Workflow rules
 - Commit per feature cluster; conventional style
-- Stay on `feat/steel-captcha-gauntlet`
-- Verification: manual browser test (no unit test suite — demoware)
+- Verification: manual browser test at local dev URL above
 - Deploy: `npx netlify deploy --prod` from project root
-
-## Skill file management
-- `.claude/skills/steel-developer` is a **symlink** → `.agents/skills/steel-developer/`
-- Both paths point to the same skill files under `.agents/`
-- Committing the symlink instead of the directory keeps git tracking clean
-- The symlink was dropped in commit `604c160` (skill move to `.agents/`) and restored in the merged PR #1 range (`b76beb1`)
-- The `.claude/` dir on disk may show as untracked after filter-repo; `git add .claude/skills/steel-developer` re-stages the symlink
-
-## Git history note — secret scrub
-- A GCP API key (`GEMINI_API_KEY`) and Steel API key (`STEEL_API_KEY`) were committed in old commits (HANDOFF.md, test_steel_session.py)
-- Run `git-filter-repo` to scrub them: `python3 git-filter-repo --force --replace-text <replacement-file>` using `==>` separator for each secret → replacement pair
-- After filter-repo: `origin` remote is removed; re-add with `git remote add origin <url>`
-- All branches must be force-pushed after the scrub; every commit hash changes
-- The scrub was done on 2026-06-18; both `feat/steel-captcha-gauntlet` and `feat/demo-restructure-api-console` were force-pushed
-- **Do not push the old SHAs** — the secrets are in those commits
+- Hobby plan: 1 concurrent session limit — never create 2nd session while game session is alive
+- Linter reverts `agent-step.mjs` to branch HEAD — edit + commit fast, don't leave edits unstaged
 
 ## Locked decisions
-- Front-end-drives-loop (KTD1): each `/agent-step` is one atomic ≤10s cycle; UI loops until done
+- Front-end-drives-loop: each `/agent-step` is one atomic ≤10s cycle; UI loops until `done:true`
 - `popLog()` transport: logger buffer fills per step, cleared by `popLog()` in each handler
-- `relaunchWithProxy` (renamed from `relaunchWithStealth` in `steel.mjs`) — import name must match
-- Vision: NVIDIA MiniMax-M3 via `lib/nvidia.mjs` (not Gemini) — faster + free tier reliable
-- `solveCaptcha` routes hardcoded to skip on hobby tier (`isHobbyTier = true` in `tokenRoute`)
-- Own site only — no third-party automation (R11 ethics boundary)
+- Vision: NVIDIA MiniMax-M3 via `lib/nvidia.mjs` — faster + free tier reliable
+- `solveCaptcha` routes skip on hobby tier (`isHobbyTier = true` in `tokenRoute`)
+- Own site only — no third-party automation
+- `other-work` uses serverless fetch only — hobby plan 1-session limit means no concurrent Steel session
+- `conn._closed = true` before any explicit `browser.close()` in phase handlers — prevents double-close with `finally`
+- `sessions.releaseAll()` on 429 in `createSession` — auto-clears leaked sessions, retries once
+
+## Git history note — secret scrub
+- GEMINI_API_KEY + STEEL_API_KEY scrubbed from history via `git-filter-repo` on 2026-06-18
+- All commit hashes changed after scrub; branches force-pushed
+- Do not push old SHAs

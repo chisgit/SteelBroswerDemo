@@ -3,7 +3,9 @@ title: "feat: Persistent Cloud Session — Math Arcade Resume Demo"
 date: 2026-06-18
 sequence: "012"
 type: feat
-status: draft
+status: shipped
+branch: feat/persistent-session-math-arcade
+head: 0e17ee0
 ---
 
 # feat: Persistent Cloud Session — Math Arcade Resume Demo
@@ -114,6 +116,15 @@ sessions.release       {sessionId: "abc…"}   → ok
 - Modifying existing gauntlet routes
 
 ---
+
+## Session Decisions (locked 2026-06-18)
+
+- **other-work uses serverless fetch, not a Steel session** — hobby plan allows only 1 concurrent active session; game session is still "live" (not released) during other-work. Wikipedia Card_game summary fetched via plain Node `fetch()` from the Netlify function. Session sits dormant (no CDP client). 3s deliberate pause before re-attach.
+- **heap proof confirmed** — `score before: -25 / score after: -25 → heap intact ✓` on every test run
+- **429 auto-recovery in `createSession`** — calls `sessions.releaseAll()` on 429 and retries once (covers leaked sessions from crashed test runs)
+- **phase-labeled CDP logs** — `connect()` takes optional `label` param; handler passes `chromium.connectOverCDP (${phase})` so each log entry names the phase
+- **card-clicking simplified** — sequential DOM clicks (index 0,1,2,3), mismatches OK; heap proof doesn't require winning
+- **`conn._closed` guard** — prevents double-close between phase code and `finally` block
 
 ## Implementation Units
 
