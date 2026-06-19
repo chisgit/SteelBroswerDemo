@@ -498,24 +498,39 @@ const WARMUP_URL = "https://stockpredictors.com";
 
 async function stockPredictorStep(page, phase) {
   if (phase === "start") {
-    // Kick Render cold-start: fetch with long timeout so Render wakes before Steel navigates
-    try {
-      await fetch(STOCK_URL, { signal: AbortSignal.timeout(50000) });
-    } catch {
-      // non-fatal — page.goto will retry
-    }
-    await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-    // Wait for Streamlit to finish booting — .stApp appears once the app is interactive
-    const loaded = await page.waitForSelector(".stApp, .stTextInput input, [data-testid='stAppViewContainer']", { timeout: 45000 })
+    // Fire warmup fetch in background (don't await) — just wakes Render without blocking
+    fetch(STOCK_URL, { signal: AbortSignal.timeout(8000) }).catch(() => {});
+    // Navigate immediately — Render may still be booting, that's fine
+    await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
+    return {
+      done: false,
+      phase: "await-boot",
+      evidence: card({
+        action: `navigate ${STOCK_URL}`,
+        targetSelector: ".stApp",
+        verdict: "Navigated — waiting for Streamlit to finish booting",
+        outcome: "pass",
+        screenshotThumb: await thumb(page),
+      }),
+    };
+  }
+
+  // Poll until Streamlit's .stApp is present — each call stays under 10s (function timeout safe)
+  if (phase === "await-boot") {
+    const ready = await page.waitForSelector(".stApp, .stTextInput input, [data-testid='stAppViewContainer']", { timeout: 7000 })
       .then(() => true).catch(() => false);
+    if (!ready) {
+      // Still booting — loop back
+      return { done: false, phase: "await-boot" };
+    }
     return {
       done: false,
       phase: "predict",
       evidence: card({
-        action: `warmup → navigate ${STOCK_URL}`,
+        action: "await Streamlit boot",
         targetSelector: ".stApp",
-        verdict: loaded ? "Streamlit app loaded and interactive" : "Page loaded but Streamlit may still be booting",
-        outcome: loaded ? "pass" : "warn",
+        verdict: "Streamlit app is interactive",
+        outcome: "pass",
         screenshotThumb: await thumb(page),
       }),
     };

@@ -39,14 +39,14 @@ async function runDemo() {
   $("run-btn").disabled = true;
   $("compare-section").style.display = "none";
 
-  const phases = ["start", "predict", "extract"];
   let phase = "start";
+  const MAX_STEPS = 20; // allows up to ~10 await-boot polls (7s each) before giving up
 
-  for (let step = 0; step < phases.length; step++) {
+  for (let step = 0; step < MAX_STEPS; step++) {
     const meta = phaseMetadata(phase);
     setBanner(meta.title);
-    setSnippet(meta.snippet, meta.desc);
-    setProve(meta.proves);
+    if (meta.snippet) setSnippet(meta.snippet, meta.desc);
+    if (meta.proves) setProve(meta.proves);
 
     const res = await api("agent-step", {
       sessionId: session.sessionId,
@@ -63,7 +63,7 @@ async function runDemo() {
     }
 
     if (res.done) break;
-    phase = res.phase || phases[step + 1];
+    phase = res.phase;
   }
 
   setBanner("Done — prediction extracted");
@@ -75,10 +75,16 @@ async function runDemo() {
 function phaseMetadata(phase) {
   const map = {
     start: {
-      title: "Waking Render service → navigating Stock Predictor (may take ~30s)",
-      snippet: `await fetch(url); // wake Render cold-start\nawait page.goto("https://stockpredictors.onrender.com");`,
-      desc: "Server-side fetch wakes the Render free-tier service, then Steel navigates once it's ready.",
-      proves: "Steel waits for real app interactivity — not just HTTP 200, but Streamlit fully booted.",
+      title: "Navigating to Stock Predictor…",
+      snippet: `fetch(url).catch(() => {}); // fire-and-forget wake\nawait page.goto("https://stockpredictors.onrender.com");`,
+      desc: "Fires a background wake request to Render and navigates immediately.",
+      proves: "Steel navigates while Render boots — no blocking wait on the function side.",
+    },
+    "await-boot": {
+      title: "Waiting for Streamlit to boot… (Render free tier cold-start)",
+      snippet: `await page.waitForSelector(".stApp", { timeout: 7000 });`,
+      desc: "Polling for .stApp — each check is a fresh serverless call, safely under the 10s function limit.",
+      proves: "Steel keeps the session alive across multiple polling cycles without re-creating the browser.",
     },
     predict: {
       title: "Entering ticker → clicking Predict",
