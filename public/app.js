@@ -1,7 +1,23 @@
 const $ = (id) => document.getElementById(id);
-const api = (name, body) =>
-  fetch("/api/" + name, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) })
-    .then((r) => r.json());
+const api = async (name, body, timeoutMs = 30000) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch("/api/" + name, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : {};
+    return res.ok ? data : { error: name + "_failed", detail: data.detail || data.error || res.statusText };
+  } catch (err) {
+    return { error: name + "_unreachable", detail: err.name === "AbortError" ? `Timed out after ${timeoutMs}ms` : err.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
 let FLOWS = {};
 let ROUTES = [];
@@ -48,9 +64,17 @@ async function prewarm() {
   setBanner("Pre-warming a Steel session…", "sessions.create");
   setSnippet('await client.sessions.create({});', "Creating a Steel cloud browser session.");
   setProve("Steel creates a real cloud browser session on demand.", "");
-  session = await api("session-create", {});
+  addLog({ method: "fetch /api/session-create", params: {}, status: "invoking" });
+  const slowNotice = setTimeout(() => {
+    setBanner("Still creating Steel session…", "sessions.create retry/backoff");
+    addLog({ method: "fetch /api/session-create", params: {}, status: "waiting", detail: "Still waiting for Steel API response" });
+  }, 12000);
+  session = await api("session-create", {}, 90000);
+  clearTimeout(slowNotice);
   if (session.error) {
-    setBanner("Steel session failed — check API key", "");
+    if (session.apiLog) session.apiLog.forEach(addLog);
+    addLog({ method: "fetch /api/session-create", params: {}, status: "failed", detail: session.detail });
+    setBanner("Steel session failed — check API key / function logs", "");
     setSnippet('// sessions.create failed', "Error: " + session.detail);
     return false;
   }

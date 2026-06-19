@@ -6,6 +6,7 @@ import { chromium } from "playwright-core";
 import { record } from "./logger.mjs";
 
 const STEEL_API_KEY = process.env.STEEL_API_KEY;
+const SESSION_CREATE_TIMEOUT_MS = 25000;
 
 // --- Steel session helpers -------------------------------------------------
 
@@ -42,16 +43,23 @@ export async function createSession(opts = {}) {
   record("sessions.create", params, "invoking");
   const t0 = Date.now();
   let session;
-  try {
-    session = await client().sessions.create(params);
-  } catch (err) {
-    // Hobby plan: 429 = concurrent session limit. Release all stale sessions and retry once.
-    if (err.message && err.message.includes("429")) {
-      record("sessions.create", {}, "429 — releasing stale sessions, retrying");
-      await releaseAllSessions();
-      session = await client().sessions.create(params);
-    } else {
-      throw err;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      session = await createSessionOnce(params);
+      break;
+    } catch (err) {
+      const hitLimit = isConcurrentLimit(err);
+      const retryable = hitLimit || isRetryableCreateError(err);
+      if (!retryable || attempt === 4) throw err;
+
+      const delayMs = attempt * 2000;
+      if (hitLimit) {
+        record("sessions.create", { attempt }, `429 - releaseAll, wait ${delayMs}ms, retrying`);
+        await releaseAllSessions();
+      } else {
+        record("sessions.create", { attempt, error: summarizeError(err) }, `retryable error - wait ${delayMs}ms, retrying`);
+      }
+      await sleep(delayMs);
     }
   }
   const ms = Date.now() - t0;
@@ -62,6 +70,41 @@ export async function createSession(opts = {}) {
     sessionViewerUrl: session.sessionViewerUrl,
     websocketUrl: session.websocketUrl,
   };
+}
+
+async function createSessionOnce(params) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SESSION_CREATE_TIMEOUT_MS);
+  try {
+    return await client().sessions.create(params, {
+      signal: controller.signal,
+      timeout: SESSION_CREATE_TIMEOUT_MS,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`sessions.create timed out after ${SESSION_CREATE_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isConcurrentLimit(err) {
+  return Boolean(err?.message && (err.message.includes("429") || err.message.toLowerCase().includes("concurrent session limit")));
+}
+
+function isRetryableCreateError(err) {
+  const message = err?.message || "";
+  return /\b(500|502|503|504)\b/.test(message) || message.toLowerCase().includes("retryable");
+}
+
+function summarizeError(err) {
+  return String(err?.message || err).slice(0, 240);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Release all live sessions — used to clear the hobby-plan concurrent limit on 429. */
