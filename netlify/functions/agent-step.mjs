@@ -16,7 +16,7 @@ export const handler = async (event) => {
   try {
     const parsed = JSON.parse(event.body || "{}");
     route = parsed.route || "unknown";
-    const { sessionId, websocketUrl, phase = "start", baseUrl, savedScore } = parsed;
+    const { sessionId, websocketUrl, phase = "start", baseUrl, savedScore, selectedCards } = parsed;
     const meta = flowMeta(route);
     const base = baseUrl || BASE || originFrom(event);
 
@@ -24,7 +24,7 @@ export const handler = async (event) => {
     conn = await connect(websocketUrl, sessionId, `chromium.connectOverCDP (${phase})`);
     const { page } = conn;
 
-    const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore });
+    const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, selectedCards });
     return json(200, {
       flowTitle: meta.title,
       feature: meta.feature,
@@ -44,7 +44,7 @@ export const handler = async (event) => {
 
 // --- per-route step logic -------------------------------------------------
 
-async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore }) {
+async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, selectedCards }) {
   switch (route) {
     case "recaptcha":
     case "turnstile":
@@ -58,7 +58,7 @@ async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl
     case "mobile-bug":
       return mobileBugStep(page, base, phase, meta);
     case "math-arcade":
-      return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore);
+      return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, selectedCards);
     case "stock-predictor":
       return stockPredictorStep(page, phase);
     default:
@@ -317,25 +317,26 @@ async function mobileBugStep(page, base, phase, meta) {
 // Math Arcade persistent-session demo: 5-phase lifecycle proves Steel JS heap survives CDP disconnect.
 // Phase:  start → detach → other-work → resume → finish
 //
-// Core proof: flip some cards, read score, disconnect (no release), open a NEW Steel session and
-// search the web ("match card game strategies"), then re-attach the ORIGINAL session and read score
+// Core proof: flip some cards, read score, disconnect (no release), open a NEW tab in the same Steel session,
+// browse elsewhere, then re-attach the ORIGINAL session and read score
 // again — score unchanged proves JS heap survived the disconnect.
-async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore) {
+async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, selectedCards = []) {
   const ARCADE_URL = "https://matharcadewrecker.netlify.app";
 
   if (phase === "start") {
     // Navigate and start the Math Match game
     await page.goto(ARCADE_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(5000);
     await page.evaluate(() => app.loadGame("match"));
     await page.waitForFunction(() => typeof matchGame !== "undefined", { timeout: 8000 });
     await page.waitForSelector("#match-grid .card", { timeout: 8000 });
 
-    // Flip 4 cards (2 pairs) — we don't need matches, just activity.
+    // Flip 4 random cards (2 pairs) — we don't need matches, just activity.
     // Cards stay face-down or face-up in the cloud browser after disconnect.
+    const seenCards = new Set();
     for (let i = 0; i < 4; i++) {
-      await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card")[idx]?.click();
-      }, i);
+      const picked = await clickRandomUnmatchedCard(page, seenCards);
+      if (picked !== null) seenCards.add(picked);
       await page.waitForTimeout(400);
     }
     await page.waitForTimeout(500);
@@ -346,6 +347,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       done: false,
       phase: "detach",
       savedScore: score,
+      selectedCards: Array.from(seenCards),
       evidence: card({
         action: "navigate matharcadewrecker.netlify.app → app.loadGame('match') → flip 4 cards",
         targetSelector: "#match-grid .card",
@@ -377,34 +379,41 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   if (phase === "other-work") {
     // Agent does independent work WITHOUT touching the Steel session at all.
     // Game session sits dormant in Steel cloud — no CDP client attached, heap fully preserved.
-    // We fetch Wikipedia from the serverless function directly — no Steel browser needed.
-    // After a 3s pause, we re-attach to prove the session outlived the gap.
-    conn._closed = true;
-    await conn.browser.close().catch(() => {});
-
-    record("agent (no Steel session)", { task: "fetch Wikipedia: Card_game strategies" }, "invoking");
+    // We jump to a new tab, browse elsewhere, then close that tab and come back.
+    const sideQuest = await conn.context.newPage().catch(() => null);
+    record("agent (no Steel session)", { task: "browse elsewhere: Wikipedia Card_game" }, "invoking");
     let wikiSummary = "";
     try {
-      const wikiRes = await fetch(
-        "https://en.wikipedia.org/api/rest_v1/page/summary/Card_game",
-        { headers: { "User-Agent": "SteelDemo/1.0" }, signal: AbortSignal.timeout(6000) }
-      );
-      const wikiJson = await wikiRes.json();
-      wikiSummary = wikiJson.extract?.slice(0, 200) || "summary unavailable";
+      if (sideQuest) {
+        await sideQuest.goto("https://en.wikipedia.org/wiki/Card_game", { waitUntil: "domcontentloaded", timeout: 12000 });
+        wikiSummary = (await sideQuest.textContent("body").catch(() => ""))?.slice(0, 180) || "summary unavailable";
+        await sideQuest.waitForTimeout(1500);
+        await sideQuest.close().catch(() => {});
+      } else {
+        const wikiRes = await fetch(
+          "https://en.wikipedia.org/api/rest_v1/page/summary/Card_game",
+          { headers: { "User-Agent": "SteelDemo/1.0" }, signal: AbortSignal.timeout(6000) }
+        );
+        const wikiJson = await wikiRes.json();
+        wikiSummary = wikiJson.extract?.slice(0, 200) || "summary unavailable";
+      }
     } catch (_) {
       wikiSummary = "fetch failed (non-critical)";
     }
-    record("agent (no Steel session)", { task: "Wikipedia fetch done — waiting 3s" }, "done");
+    record("agent (no Steel session)", { task: "Wikipedia detour done — waiting 3s" }, "done");
 
     // Deliberate 3s pause — session sits completely idle, making the story tangible
     await new Promise((r) => setTimeout(r, 3000));
+
+    conn._closed = true;
+    await conn.browser.close().catch(() => {});
 
     return {
       done: false,
       phase: "resume",
       savedScore,
       evidence: card({
-        action: "serverless fetch → Wikipedia 'Card game' — no Steel session used",
+        action: "tab hop to Wikipedia → close tab → resume original session",
         targetSelector: "n/a",
         verdict: `game session sat idle in Steel cloud for 3s | "${wikiSummary.slice(0, 100)}…"`,
         outcome: "pass",
@@ -450,25 +459,28 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   if (phase === "finish") {
-    // Keep flipping sequential card pairs until we get a match (score increases)
+    // Keep flipping random unmatched card pairs until we get a match (score increases).
     // Cards are already loaded in the cloud browser — same state as when we left
     let matched = await page.evaluate(() => matchGame.matched).catch(() => 0);
     const totalCards = await page.evaluate(() => matchGame.cards.length).catch(() => 16);
-    let cardIdx = 0;
+    const triedPairs = new Set();
 
     // Try pairs until we get at least one new match or exhaust attempts
     const maxAttempts = Math.ceil(totalCards / 2);
     for (let attempt = 0; attempt < maxAttempts && matched < 1; attempt++) {
+      const pair = await chooseRandomCardPair(page, triedPairs, selectedCards);
+      if (!pair) break;
+      triedPairs.add(pair.join(","));
+
       await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card:not(.matched)")[idx]?.click();
-      }, 0);
+        document.querySelectorAll("#match-grid .card")[idx]?.click();
+      }, pair[0]);
       await page.waitForTimeout(400);
       await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card:not(.matched)")[idx]?.click();
-      }, 1);
+        document.querySelectorAll("#match-grid .card")[idx]?.click();
+      }, pair[1]);
       await page.waitForTimeout(800);
       matched = await page.evaluate(() => matchGame.matched).catch(() => matched);
-      cardIdx += 2;
     }
 
     const finalScore = await page.evaluate(() => matchGame.score).catch(() => 0);
@@ -479,7 +491,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       done: true,
       outcome: "pass",
       evidence: card({
-        action: "resume game → flip cards → sessions.release(sessionId)",
+        action: "resume game → flip random pairs → sessions.release(sessionId)",
         targetSelector: "#match-grid .card",
         verdict: `game resumed and completed — final score: ${finalScore}, matches: ${matched}`,
         outcome: "pass",
@@ -489,6 +501,48 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   return { done: true, outcome: "fail", evidence: card({ action: `unknown phase: ${phase}`, outcome: "fail" }) };
+}
+
+async function clickRandomUnmatchedCard(page, seenCards = new Set()) {
+  return await page.evaluate((seen) => {
+    const cards = Array.from(document.querySelectorAll("#match-grid .card"));
+    const available = cards
+      .map((card, index) => ({ card, index }))
+      .filter(({ card, index }) => !card.classList.contains("matched") && !seen.includes(index));
+    if (!available.length) return null;
+    const pick = available[Math.floor(Math.random() * available.length)];
+    pick.card?.click();
+    return pick.index;
+  }, Array.from(seenCards));
+}
+
+async function chooseRandomCardPair(page, triedPairs, excludedCards = []) {
+  return await page.evaluate(({ tried, excluded }) => {
+    const cards = Array.from(document.querySelectorAll("#match-grid .card"));
+    if (cards.length < 2) return null;
+    const excludedSet = new Set(excluded);
+    const eligible = cards
+      .map((card, index) => ({ card, index }))
+      .filter(({ card, index }) => !card.classList.contains("matched") && !excludedSet.has(index))
+      .map(({ index }) => index);
+    const pool = eligible.length >= 2
+      ? eligible
+      : cards
+          .map((card, index) => ({ card, index }))
+          .filter(({ card }) => !card.classList.contains("matched"))
+          .map(({ index }) => index);
+    if (pool.length < 2) return null;
+    const triedSet = new Set(tried);
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const a = pool[Math.floor(Math.random() * pool.length)];
+      let b = pool[Math.floor(Math.random() * pool.length)];
+      if (a === b) continue;
+      const key = [Math.min(a, b), Math.max(a, b)].join(",");
+      if (triedSet.has(key)) continue;
+      return [Math.min(a, b), Math.max(a, b)];
+    }
+    return null;
+  }, { tried: Array.from(triedPairs), excluded: Array.from(excludedCards) });
 }
 
 // Stock Predictor: 3-phase lifecycle through stockpredictors.onrender.com

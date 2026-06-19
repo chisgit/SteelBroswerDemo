@@ -108,6 +108,7 @@ async function runRoute(route) {
       setApiCall("sessions.create (relaunch)", '{ useProxy: true, blockAds: true }', "Released old session, created new proxy-routed session.");
     }
     if (res.savedScore !== undefined) carry.savedScore = res.savedScore;
+    if (res.selectedCards !== undefined) carry.selectedCards = res.selectedCards;
     if (res.done) break;
     phase = res.phase || "continue";
   }
