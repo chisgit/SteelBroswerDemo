@@ -1,11 +1,35 @@
 {
   "version": 1,
   "skills": {
+    "steel-browser": {
+      "source": "steel-dev/skills",
+      "sourceType": "github",
+      "skillPath": "steel-browser/SKILL.md",
+      "computedHash": "d1025ca7d8bfd017a436f8fd5f2cf544ea1e8700025cf90798e34d8d507246f6"
+    },
     "steel-developer": {
       "source": "steel-dev/skills",
       "sourceType": "github",
       "skillPath": "steel-developer/SKILL.md",
-      "computedHash": "f5b4acc387514380c6f73d7b2f59ec2daee1e8f06e7f4f2bb9bc266b74d0d79b"
+      "computedHash": "89694013945f07f2c9455a19d99bf1310d75d2c7f2be73fbb6393f77f4633ba0"
+    },
+    "steel-reliability": {
+      "source": "steel-dev/skills",
+      "sourceType": "github",
+      "skillPath": "steel-reliability/SKILL.md",
+      "computedHash": "96915fcb1c214f40c0e1a9a898fc043568b6ec91b947d3626a3ed60e8b295a63"
+    },
+    "steel-session-debugging": {
+      "source": "steel-dev/skills",
+      "sourceType": "github",
+      "skillPath": "steel-session-debugging/SKILL.md",
+      "computedHash": "74367f87859aeb5c0e7818a78c5c724d2ab7d2e32c864ade925eae24bb49444d"
+    },
+    "steel-skill-creator": {
+      "source": "steel-dev/skills",
+      "sourceType": "github",
+      "skillPath": "steel-skill-creator/SKILL.md",
+      "computedHash": "8905ceb966c84bf1757f461b444d834635170ab8701ac94b4f78b83dfeb7c197"
     }
   }
 }
