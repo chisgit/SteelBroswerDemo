@@ -3,7 +3,7 @@
 // Both the live banner (R13) and the U9 technical panel read from here, so the
 // label always matches what the engine is actually doing.
 
-export const ROUTES = ["recaptcha", "turnstile", "hcaptcha", "vision-grid", "bot-wall", "mobile-bug"];
+export const ROUTES = ["recaptcha", "turnstile", "hcaptcha", "vision-grid", "bot-wall", "mobile-bug", "stock-predictor"];
 export const PERSISTENCE_ROUTES = ["math-arcade"];
 
 export const FLOWS = {
@@ -60,6 +60,14 @@ export const FLOWS = {
     feature: "session persistence",
     proves: "Steel keeps JS heap alive after agent disconnects — re-attach resumes exactly where you left off.",
     apiSnippet: `// disconnect without releasing\nawait browser.close();\n// ... other work ...\n// reconnect same session\nawait chromium.connectOverCDP(websocketUrl);`,
+    docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
+    path: null,
+  },
+  "stock-predictor": {
+    title: "Stock Predictor — scrape + screenshot",
+    feature: "scrape + screenshot",
+    proves: "Steel browser navigates stockpredictors.onrender.com, enters a ticker, presses Predict, then takes a screenshot and scrapes the result text — side-by-side comparison proves fidelity.",
+    apiSnippet: `await page.goto(url);\nawait page.fill('#text_input', ticker);\nawait page.click('button:has-text("Predict")');\nconst shot = await page.screenshot();\nconst text = await page.evaluate(() => document.body.innerText);`,
     docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
     path: null,
   },
@@ -191,6 +199,14 @@ export const DEMO_RECIPES = {
     routes: ["math-arcade"],
     overlays: ["none"],
     summary: "Steel keeps JS heap alive after agent disconnects — re-attach resumes the Math Match game exactly where it left off.",
+  },
+  "stock-predictor": {
+    title: "Stock Predictor",
+    baseDemo: "arcade-task",
+    scenario: "simple-impact",
+    routes: ["stock-predictor"],
+    overlays: ["none"],
+    summary: "Navigate stockpredictors.onrender.com, enter AAPL, press Predict, take a screenshot and scrape the prediction text — side-by-side proves the agent saw what the model predicted.",
   },
 };
 

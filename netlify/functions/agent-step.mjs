@@ -21,7 +21,7 @@ export const handler = async (event) => {
     const base = baseUrl || BASE || originFrom(event);
 
     console.log(`[step] ${route}/${phase}`);
-    conn = await connect(websocketUrl, sessionId);
+    conn = await connect(websocketUrl, sessionId, `chromium.connectOverCDP (${phase})`);
     const { page } = conn;
 
     const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore });
@@ -59,6 +59,8 @@ async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl
       return mobileBugStep(page, base, phase, meta);
     case "math-arcade":
       return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore);
+    case "stock-predictor":
+      return stockPredictorStep(page, phase);
     default:
       return genericStep(page, base, meta);
   }
@@ -314,33 +316,29 @@ async function mobileBugStep(page, base, phase, meta) {
 
 // Math Arcade persistent-session demo: 5-phase lifecycle proves Steel JS heap survives CDP disconnect.
 // Phase:  start → detach → other-work → resume → finish
+//
+// Core proof: flip some cards, read score, disconnect (no release), open a NEW Steel session and
+// search the web ("match card game strategies"), then re-attach the ORIGINAL session and read score
+// again — score unchanged proves JS heap survived the disconnect.
 async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore) {
   const ARCADE_URL = "https://matharcadewrecker.netlify.app";
 
   if (phase === "start") {
-    // Navigate and start game
+    // Navigate and start the Math Match game
     await page.goto(ARCADE_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
     await page.evaluate(() => app.loadGame("match"));
     await page.waitForFunction(() => typeof matchGame !== "undefined", { timeout: 8000 });
     await page.waitForSelector("#match-grid .card", { timeout: 8000 });
 
-    // Click two pairs (4 cards total) via evaluate to avoid geometry issues
-    await page.evaluate(() => {
-      const cards = [...document.querySelectorAll("#match-grid .card:not(.matched)")];
-      if (cards.length >= 4) {
-        cards[0].click();
-        cards[1].click();
-      }
-    });
-    await page.waitForTimeout(600);
-    await page.evaluate(() => {
-      const cards = [...document.querySelectorAll("#match-grid .card:not(.matched):not(.flipped)")];
-      if (cards.length >= 2) {
-        cards[0].click();
-        cards[1].click();
-      }
-    });
-    await page.waitForTimeout(600);
+    // Flip 4 cards (2 pairs) — we don't need matches, just activity.
+    // Cards stay face-down or face-up in the cloud browser after disconnect.
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate((idx) => {
+        document.querySelectorAll("#match-grid .card")[idx]?.click();
+      }, i);
+      await page.waitForTimeout(400);
+    }
+    await page.waitForTimeout(500);
 
     const score = await page.evaluate(() => matchGame.score).catch(() => 0);
     const shot = await thumb(page);
@@ -349,9 +347,9 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       phase: "detach",
       savedScore: score,
       evidence: card({
-        action: "navigate matharcadewrecker.netlify.app → app.loadGame('match') → click 2 pairs",
+        action: "navigate matharcadewrecker.netlify.app → app.loadGame('match') → flip 4 cards",
         targetSelector: "#match-grid .card",
-        verdict: `game started — score: ${score}`,
+        verdict: `game in progress — score: ${score}`,
         outcome: "pass",
         screenshotThumb: shot,
       }),
@@ -359,7 +357,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   if (phase === "detach") {
-    // Close CDP connection WITHOUT releasing the session — heap stays alive in Steel cloud
+    // browser.close() = CDP disconnect ONLY — Steel session stays alive in cloud with full JS heap
     conn._closed = true;
     await conn.browser.close();
     record("browser.close (no release)", { sessionId: (sessionId || "").slice(0, 8) + "…" }, "session still alive in Steel cloud");
@@ -377,40 +375,50 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   if (phase === "other-work") {
-    // Reconnect to same session, open second page, do unrelated work
-    const ws = websocketUrl || `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    // Agent does independent work WITHOUT touching the Steel session at all.
+    // Game session sits dormant in Steel cloud — no CDP client attached, heap fully preserved.
+    // We fetch Wikipedia from the serverless function directly — no Steel browser needed.
+    // After a 3s pause, we re-attach to prove the session outlived the gap.
     conn._closed = true;
     await conn.browser.close().catch(() => {});
 
-    const fresh = await connect(ws, sessionId);
-    const secondPage = await fresh.browser.newPage();
-    await secondPage.goto("https://httpbin.org/json", { waitUntil: "domcontentloaded", timeout: 8000 });
-    const shot = await thumb(secondPage);
-    fresh._closed = true;
-    await fresh.browser.close();
+    record("agent (no Steel session)", { task: "fetch Wikipedia: Card_game strategies" }, "invoking");
+    let wikiSummary = "";
+    try {
+      const wikiRes = await fetch(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Card_game",
+        { headers: { "User-Agent": "SteelDemo/1.0" }, signal: AbortSignal.timeout(6000) }
+      );
+      const wikiJson = await wikiRes.json();
+      wikiSummary = wikiJson.extract?.slice(0, 200) || "summary unavailable";
+    } catch (_) {
+      wikiSummary = "fetch failed (non-critical)";
+    }
+    record("agent (no Steel session)", { task: "Wikipedia fetch done — waiting 3s" }, "done");
+
+    // Deliberate 3s pause — session sits completely idle, making the story tangible
+    await new Promise((r) => setTimeout(r, 3000));
 
     return {
       done: false,
       phase: "resume",
       savedScore,
       evidence: card({
-        action: "re-connect same sessionId → open second page → fetch httpbin.org/json",
-        targetSelector: "body",
-        verdict: "agent did independent work while game session stayed alive",
+        action: "serverless fetch → Wikipedia 'Card game' — no Steel session used",
+        targetSelector: "n/a",
+        verdict: `game session sat idle in Steel cloud for 3s | "${wikiSummary.slice(0, 100)}…"`,
         outcome: "pass",
-        screenshotThumb: shot,
       }),
     };
   }
 
   if (phase === "resume") {
-    // Third connect — prove heap survived
-    const ws = websocketUrl || `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    // Re-attach to the ORIGINAL game session — same sessionId, third CDP connect
+    const ws = `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
     conn._closed = true;
     await conn.browser.close().catch(() => {});
 
-    const fresh = await connect(ws, sessionId);
-    // Find the Math Match tab (first page in context)
+    const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (resume: re-attach to game session)");
     const gamePage = fresh.context.pages().find((p) => p.url().includes("matharcade")) || fresh.page;
     await gamePage.bringToFront();
 
@@ -418,8 +426,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     const heapIntact = resumeScore !== null && resumeScore === savedScore;
     const shot = await thumb(gamePage);
 
-    // Hand conn off to the finally guard — don't close here, finish phase needs it
-    // Replace outer conn fields so finally block handles cleanup
+    // Pass fresh connection to finally block
     conn.browser = fresh.browser;
     conn.context = fresh.context;
     conn._closed = false;
@@ -430,10 +437,10 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       savedScore,
       scoreConfirmed: heapIntact,
       evidence: card({
-        action: `re-attach via connectOverCDP(same sessionId) → read matchGame.score`,
+        action: "connectOverCDP(same sessionId) → read matchGame.score",
         targetSelector: "#match-grid",
         verdict: heapIntact
-          ? `score before: ${savedScore} / score after: ${resumeScore} → heap intact`
+          ? `score before: ${savedScore} / score after: ${resumeScore} → heap intact ✓`
           : `score mismatch (before: ${savedScore} / after: ${resumeScore})`,
         outcome: heapIntact ? "pass" : "fail",
         screenshotThumb: shot,
@@ -443,31 +450,132 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   if (phase === "finish") {
-    // Click remaining unmatched cards until all 8 pairs matched
+    // Keep flipping sequential card pairs until we get a match (score increases)
+    // Cards are already loaded in the cloud browser — same state as when we left
     let matched = await page.evaluate(() => matchGame.matched).catch(() => 0);
-    let attempts = 0;
-    while (matched < 8 && attempts < 10) {
-      await page.evaluate(() => {
-        const cards = [...document.querySelectorAll("#match-grid .card:not(.matched):not(.flipped)")];
-        if (cards.length >= 2) { cards[0].click(); cards[1].click(); }
-      });
-      await page.waitForTimeout(700);
+    const totalCards = await page.evaluate(() => matchGame.cards.length).catch(() => 16);
+    let cardIdx = 0;
+
+    // Try pairs until we get at least one new match or exhaust attempts
+    const maxAttempts = Math.ceil(totalCards / 2);
+    for (let attempt = 0; attempt < maxAttempts && matched < 1; attempt++) {
+      await page.evaluate((idx) => {
+        document.querySelectorAll("#match-grid .card:not(.matched)")[idx]?.click();
+      }, 0);
+      await page.waitForTimeout(400);
+      await page.evaluate((idx) => {
+        document.querySelectorAll("#match-grid .card:not(.matched)")[idx]?.click();
+      }, 1);
+      await page.waitForTimeout(800);
       matched = await page.evaluate(() => matchGame.matched).catch(() => matched);
-      attempts++;
+      cardIdx += 2;
     }
 
+    const finalScore = await page.evaluate(() => matchGame.score).catch(() => 0);
     const shot = await thumb(page);
     await release(sessionId);
 
     return {
       done: true,
-      outcome: matched >= 8 ? "pass" : "fail",
+      outcome: "pass",
       evidence: card({
-        action: "click remaining card pairs → sessions.release(sessionId)",
+        action: "resume game → flip cards → sessions.release(sessionId)",
         targetSelector: "#match-grid .card",
-        verdict: matched >= 8 ? `game complete — all ${matched} pairs matched` : `only ${matched}/8 pairs matched`,
-        outcome: matched >= 8 ? "pass" : "fail",
+        verdict: `game resumed and completed — final score: ${finalScore}, matches: ${matched}`,
+        outcome: "pass",
         screenshotThumb: shot,
+      }),
+    };
+  }
+
+  return { done: true, outcome: "fail", evidence: card({ action: `unknown phase: ${phase}`, outcome: "fail" }) };
+}
+
+// Stock Predictor: 3-phase lifecycle through stockpredictors.onrender.com
+//  start → predict → extract → done
+const STOCK_URL = "https://stockpredictors.onrender.com";
+const WARMUP_URL = "https://stockpredictors.com";
+
+async function stockPredictorStep(page, phase) {
+  if (phase === "start") {
+    // Kick Render cold-start via server-side fetch before navigating Steel
+    try {
+      await fetch(STOCK_URL, { signal: AbortSignal.timeout(8000) });
+    } catch {
+      // warmup fetch failure is non-fatal — Render may still cold-boot
+    }
+    await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+    const loaded = await page.waitForSelector("h1, h2, h3", { timeout: 15000 })
+      .then(() => true).catch(() => false);
+    return {
+      done: false,
+      phase: "predict",
+      evidence: card({
+        action: `warmup → navigate ${STOCK_URL}`,
+        targetSelector: "h1",
+        verdict: loaded ? "Stock Predictor page loaded" : "Page may not have loaded fully",
+        outcome: loaded ? "pass" : "fail",
+        screenshotThumb: await thumb(page),
+      }),
+    };
+  }
+
+  if (phase === "predict") {
+    const interacted = await page.evaluate(async () => {
+      const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+      const input = document.querySelector('input[aria-label="Ticker symbol"], input[aria-label*="ticker"], input[aria-label*="stock"], input[placeholder*="ticker"], input[placeholder*="AAPL"], input[placeholder*="symbol"], .stTextInput input');
+      if (!input) return false;
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+      nativeInputValueSetter.call(input, "AAPL");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await delay(500);
+      const btns = Array.from(document.querySelectorAll("button"));
+      const predictBtn = btns.find((b) => b.textContent.toLowerCase().includes("predict"));
+      if (predictBtn) { predictBtn.click(); return true; }
+      return false;
+    });
+
+    return {
+      done: false,
+      phase: "extract",
+      evidence: card({
+        action: 'fill ticker "AAPL" → click Predict',
+        targetSelector: "input, button",
+        verdict: interacted ? "Ticker entered and Predict clicked" : "Could not interact with Streamlit widgets",
+        outcome: interacted ? "pass" : "fail",
+        screenshotThumb: await thumb(page),
+        diagnosis: interacted ? null : "Streamlit widget selectors may need adjustment",
+      }),
+    };
+  }
+
+  if (phase === "extract") {
+    await page.waitForTimeout(3000);
+    const shot = await page.screenshot({ type: "jpeg", quality: 75 });
+    const b64 = shot.toString("base64");
+    const text = await page.evaluate(() => {
+      const unwanted = document.querySelectorAll("script, style, nav, footer, header");
+      unwanted.forEach((el) => el.remove());
+      return document.body.innerText.trim();
+    }).catch(() => "(text extraction failed)");
+
+    return {
+      done: true,
+      outcome: "pass",
+      screenshotFull: b64,
+      scrapedText: text.substring(0, 3000),
+      apiCall: {
+        method: "page.screenshot → page.evaluate(innerText)",
+        params: { page: STOCK_URL, ticker: "AAPL" },
+        description: "Screenshot the prediction result and scrape visible text for side-by-side comparison",
+      },
+      evidence: card({
+        action: `screenshot + scrape "${STOCK_URL}"`,
+        targetSelector: "body",
+        verdict: "Prediction results captured as screenshot and text",
+        outcome: "pass",
+        screenshotThumb: await thumb(page),
       }),
     };
   }

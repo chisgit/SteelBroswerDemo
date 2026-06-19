@@ -41,7 +41,19 @@ export async function createSession(opts = {}) {
 
   record("sessions.create", params, "invoking");
   const t0 = Date.now();
-  const session = await client().sessions.create(params);
+  let session;
+  try {
+    session = await client().sessions.create(params);
+  } catch (err) {
+    // Hobby plan: 429 = concurrent session limit. Release all stale sessions and retry once.
+    if (err.message && err.message.includes("429")) {
+      record("sessions.create", {}, "429 — releasing stale sessions, retrying");
+      await releaseAllSessions();
+      session = await client().sessions.create(params);
+    } else {
+      throw err;
+    }
+  }
   const ms = Date.now() - t0;
   record("sessions.create", { sessionId: sanitize(session.id), status: session.status }, "ok", `${ms}ms`);
   return {
@@ -52,19 +64,30 @@ export async function createSession(opts = {}) {
   };
 }
 
+/** Release all live sessions — used to clear the hobby-plan concurrent limit on 429. */
+export async function releaseAllSessions() {
+  try {
+    await client().sessions.releaseAll({});
+    record("sessions.releaseAll", {}, "ok");
+  } catch (_) {
+    // best-effort
+  }
+}
+
 /** Connect Playwright to a live Steel session over CDP (server-side only). */
-export async function connect(websocketUrl, sessionId) {
+export async function connect(websocketUrl, sessionId, label = "chromium.connectOverCDP") {
   const ws =
     websocketUrl ||
     `wss://connect.steel.dev?apiKey=${STEEL_API_KEY}&sessionId=${sessionId || ""}`;
-  record("chromium.connectOverCDP", { sessionId: sanitize(sessionId) }, "invoking");
+  const displayWs = ws.replace(/apiKey=[^&]+/, "apiKey=…");
+  record(label, { sessionId: sanitize(sessionId), websocketUrl: displayWs }, "invoking");
   const t0 = Date.now();
   const browser = await chromium.connectOverCDP(ws);
   const ms = Date.now() - t0;
-  record("chromium.connectOverCDP", { pages: browser.contexts().length }, "connected", `${ms}ms`);
+  record(label, { sessionId: sanitize(sessionId), websocketUrl: displayWs, pages: browser.contexts().length }, "connected", `${ms}ms`);
   const context = browser.contexts()[0] || (await browser.newContext());
   const page = context.pages()[0] || (await context.newPage());
-  return { browser, context, page };
+  return { browser, context, page, _wsUrl: displayWs };
 }
 
 /** Release (tear down) a session. Best-effort; never throws into the caller. */
