@@ -1,5 +1,5 @@
 # HANDOFF — Steel CAPTCHA Gauntlet (Arcade miniprojects)
-Updated: 2026-06-18 (env setup + hobby-tier fixes) | Branch: `feat/steel-captcha-gauntlet` @ (pending commit)
+Updated: 2026-06-18 (deployed to steeldemo.netlify.app) | Branch: `feat/steel-captcha-gauntlet` @ `1b67f05`
 
 ## Workspace
 - Path: `c:\Users\User\SteelBroswerDemo`
@@ -8,19 +8,11 @@ Updated: 2026-06-18 (env setup + hobby-tier fixes) | Branch: `feat/steel-captcha
 
 ## Run commands
 ```powershell
-# Set env vars (or use .env file)
-$env:STEEL_API_KEY='STEEL_API_KEY_REMOVED'
-$env:GEMINI_API_KEY='GEMINI_API_KEY_REMOVED'
-
-# Local dev (with tunnel for cloud browser access)
+# Local dev (reads .env automatically)
 npm run dev
 
-# Tunnel for external Steel access
-npx localtunnel --port 8888
-
-# Deploy to Netlify (requires auth)
-netlify login
-netlify deploy --prod
+# Deploy to Netlify (linked to steeldemo.netlify.app)
+npx netlify deploy --prod
 ```
 
 ## Key files
@@ -39,26 +31,24 @@ netlify deploy --prod
 |--------|----------|--------|----------|
 | `feat/steel-captcha-gauntlet` | Master 001 + MP index 002 | 🔄 ~80% built, MP9 UI shipped | 1 — hardening + verify |
 
-## What's done (committed and verified)
-- **Previous session:** MP9 U1 + U2 — header/legend + per-flow snippet panel (R14 showcase). Commit: `88dfd27`
-- **This session (2026-06-18):**
-  - Set up env vars: `STEEL_API_KEY`, `GEMINI_API_KEY` in `.env`
-  - Fixed hobby-tier constraint: `solveCaptcha` not available; changed `session-create.mjs` to default `solveCaptcha: false`
-  - Session creation now succeeds on free tier
-  - App loads at localhost:8888; session pool functional
-  - **Next blocker:** Deploy to Netlify with real URL (not local tunnel) so Steel cloud browser can reach target pages
+## What's done (committed)
+- **Commit `1b67f05`** (this session):
+  - Set up `.env`: `STEEL_API_KEY`, `GEMINI_API_KEY`
+  - Fixed hobby-tier blocker: `solveCaptcha: true` not available on free tier; changed `session-create.mjs` to `solveCaptcha: Boolean(body.solveCaptcha)` (default false)
+  - Session creation now works on hobby tier
+  - Deployed to `https://steeldemo.netlify.app` (live, linked in Netlify UI)
+  - Set `GAUNTLET_BASE_URL=https://steeldemo.netlify.app` in `.env`
+  - App loads at localhost:8888, session pool functional, Steel browser can reach live target pages
 
-## What's left (critical path to demo-ready)
-1. **Deploy to Netlify** — authenticate, set remote URL, push branch
-   - Once deployed: set `GAUNTLET_BASE_URL` to live deploy URL (not local tunnel)
-   - Steel browser can then reach `/gauntlet/*.html` pages live
-2. **Verify full gauntlet flow** — run all 6 routes end-to-end with timing/error capture
-   - reCAPTCHA, Turnstile (need `solveCaptcha: true` or skip token solving)
-   - hCaptcha (delayed render + recover)
+## What's left (next session)
+1. **Test full gauntlet** — all 6 routes end-to-end
+   - reCAPTCHA, Turnstile (skip/attempt token solving)
+   - hCaptcha (delayed render recovery)
    - Vision grid (Gemini classify + click)
    - Bot-wall (stealth relaunch)
    - Mobile-bug (viewport recovery)
-3. **Timing audit** — confirm each step <10s (Netlify sync cap dominates)
+2. **Timing audit** — confirm each step <10s (Netlify sync cap)
+3. **Hardening** — verify reliability under load, capture errors
 
 ## Locked decisions
 - Front-end-drives-loop model (KTD1 master 001) — each `/agent-step` is one atomic ≤10s cycle
@@ -84,8 +74,7 @@ netlify deploy --prod
 - **Plan docs:** do NOT edit during execution; progress lives in git + HANDOFF.md
 
 ## Next step
-1. Authenticate to Netlify: `netlify login`
-2. Deploy branch: `netlify deploy --prod`
-3. Set live URL in `.env`: `GAUNTLET_BASE_URL=<deploy-url>`
-4. Restart server: `npm run dev`
-5. Test full gauntlet (all 6 routes)
+1. Start dev server: `npm run dev`
+2. Navigate to localhost:8888
+3. Run each demo route (Simple impact, Full CAPTCHA gauntlet, No-CAPTCHA smoke route)
+4. Verify timing + error handling under load
