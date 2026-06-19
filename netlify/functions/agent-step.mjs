@@ -16,7 +16,7 @@ export const handler = async (event) => {
   try {
     const parsed = JSON.parse(event.body || "{}");
     route = parsed.route || "unknown";
-    const { sessionId, websocketUrl, phase = "start", baseUrl, savedScore } = parsed;
+    const { sessionId, websocketUrl, phase = "start", baseUrl, savedScore, matchedPair, faceUpIndex } = parsed;
     const meta = flowMeta(route);
     const base = baseUrl || BASE || originFrom(event);
 
@@ -34,7 +34,7 @@ export const handler = async (event) => {
     }
     const { page } = conn;
 
-    const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore });
+    const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, matchedPair, faceUpIndex });
     return json(200, {
       flowTitle: meta.title,
       feature: meta.feature,
@@ -54,7 +54,7 @@ export const handler = async (event) => {
 
 // --- per-route step logic -------------------------------------------------
 
-async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore }) {
+async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, matchedPair, faceUpIndex }) {
   switch (route) {
     case "recaptcha":
     case "turnstile":
@@ -68,7 +68,7 @@ async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl
     case "mobile-bug":
       return mobileBugStep(page, base, phase, meta);
     case "math-arcade":
-      return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore);
+      return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, matchedPair, faceUpIndex);
     case "stock-predictor":
       return stockPredictorStep(page, phase);
     default:
@@ -330,27 +330,53 @@ async function mobileBugStep(page, base, phase, meta) {
 // Core proof: flip some cards, read score, disconnect (no release), open a NEW Steel session and
 // search the web ("match card game strategies"), then re-attach the ORIGINAL session and read score
 // again — score unchanged proves JS heap survived the disconnect.
-async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore) {
+async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, matchedPair, faceUpIndex) {
   const ARCADE_URL = "https://matharcadewrecker.netlify.app";
 
   if (phase === "start") {
     // Navigate and start the Math Match game
     await page.goto(ARCADE_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(5000);
     await page.evaluate(() => app.loadGame("match"));
     await page.waitForFunction(() => typeof matchGame !== "undefined", { timeout: 8000 });
     await page.waitForSelector("#match-grid .card", { timeout: 8000 });
 
-    // Flip 4 cards (2 pairs) — we don't need matches, just activity.
-    // Cards stay face-down or face-up in the cloud browser after disconnect.
-    for (let i = 0; i < 4; i++) {
-      await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card")[idx]?.click();
-      }, i);
-      await page.waitForTimeout(400);
-    }
-    await page.waitForTimeout(500);
+    const chosen = await page.evaluate(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const cards = Array.from(matchGame.cards || []);
+      const groups = new Map();
+      for (const card of cards) {
+        const group = groups.get(card.id) || [];
+        group.push(card.index);
+        groups.set(card.id, group);
+      }
+      const pairs = Array.from(groups.values()).filter((group) => group.length >= 2);
+      const pair = pairs[Math.floor(Math.random() * pairs.length)]?.slice(0, 2) || [0, 1];
+      const els = () => document.querySelectorAll("#match-grid .card");
 
-    const score = await page.evaluate(() => matchGame.score).catch(() => null);
+      els()[pair[0]]?.click();
+      await sleep(350);
+      els()[pair[1]]?.click();
+      await sleep(900);
+
+      const remaining = cards
+        .map((card) => card.index)
+        .filter((index) => !pair.includes(index) && !els()[index]?.classList.contains("matched"));
+      const faceUp = remaining[Math.floor(Math.random() * remaining.length)] ?? null;
+      if (faceUp !== null) {
+        els()[faceUp]?.click();
+        await sleep(350);
+      }
+
+      return {
+        matchedPair: pair,
+        faceUpIndex: faceUp,
+        score: matchGame.score,
+        matched: matchGame.matched,
+      };
+    });
+
+    const score = chosen?.score ?? null;
     if (score === null) {
       return { done: true, outcome: "fail", evidence: card({ action: "read matchGame.score", verdict: "evaluate failed — game may not have loaded", outcome: "fail" }) };
     }
@@ -359,10 +385,12 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       done: false,
       phase: "detach",
       savedScore: score,
+      matchedPair: chosen.matchedPair,
+      faceUpIndex: chosen.faceUpIndex,
       evidence: card({
-        action: "navigate matharcadewrecker.netlify.app → app.loadGame('match') → flip 4 cards",
+        action: "wait 5s → app.loadGame('match') → flip a random matching pair → leave one random card face-up",
         targetSelector: "#match-grid .card",
-        verdict: `game in progress — score: ${score}`,
+        verdict: `random match: [${chosen.matchedPair.join(", ")}], face-up card: ${chosen.faceUpIndex ?? "none"}, score: ${score}`,
         outcome: "pass",
         screenshotThumb: shot,
       }),
@@ -378,6 +406,8 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       done: false,
       phase: "other-work",
       savedScore,
+      matchedPair,
+      faceUpIndex,
       evidence: card({
         action: "browser.close() — CDP disconnect only, no sessions.release()",
         targetSelector: "n/a",
@@ -415,6 +445,8 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       done: false,
       phase: "resume",
       savedScore,
+      matchedPair,
+      faceUpIndex,
       evidence: card({
         action: "serverless fetch → Wikipedia 'Card game' — no Steel session used",
         targetSelector: "n/a",
@@ -433,7 +465,17 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     await gamePage.bringToFront();
 
     const resumeScore = await gamePage.evaluate(() => matchGame.score).catch(() => null);
-    const heapIntact = resumeScore !== null && resumeScore === savedScore;
+    const cardState = await gamePage.evaluate(({ matchedPair, faceUpIndex }) => {
+      const cards = Array.from(document.querySelectorAll("#match-grid .card"));
+      const pairMatched = Array.isArray(matchedPair) && matchedPair.length === 2
+        ? matchedPair.every((index) => cards[index]?.classList.contains("matched"))
+        : false;
+      const faceUpPreserved = faceUpIndex === null || faceUpIndex === undefined
+        ? true
+        : cards[faceUpIndex]?.classList.contains("flipped") && !cards[faceUpIndex]?.classList.contains("matched");
+      return { pairMatched, faceUpPreserved };
+    }, { matchedPair, faceUpIndex }).catch(() => ({ pairMatched: false, faceUpPreserved: false }));
+    const heapIntact = resumeScore !== null && resumeScore === savedScore && cardState.pairMatched && cardState.faceUpPreserved;
     const shot = await thumb(gamePage);
     await fresh.browser.close().catch(() => {});
 
@@ -441,16 +483,18 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
       done: false,
       phase: "finish",
       savedScore,
+      matchedPair,
+      faceUpIndex,
       scoreConfirmed: heapIntact,
       evidence: card({
-        action: "connectOverCDP(same sessionId) → read matchGame.score",
+        action: "reopen same Steel session → verify score, matched pair, and face-up card",
         targetSelector: "#match-grid",
         verdict: heapIntact
-          ? `score before: ${savedScore} / score after: ${resumeScore} → heap intact ✓`
-          : `score mismatch (before: ${savedScore} / after: ${resumeScore})`,
+          ? `score ${savedScore}→${resumeScore}, matched [${(matchedPair || []).join(", ")}] still removed, card ${faceUpIndex ?? "none"} still face-up`
+          : `state changed: score ${savedScore}→${resumeScore}, pair matched=${cardState.pairMatched}, face-up preserved=${cardState.faceUpPreserved}`,
         outcome: heapIntact ? "pass" : "fail",
         screenshotThumb: shot,
-        diagnosis: heapIntact ? null : "JS heap may not have survived — score differs",
+        diagnosis: heapIntact ? null : "The resumed browser did not show the same game state that was left before disconnect.",
       }),
     };
   }
@@ -510,33 +554,88 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
 // Stock Predictor: 3-phase lifecycle through stockpredictors.onrender.com
 //  start → predict → extract → done
 const STOCK_URL = "https://stockpredictors.onrender.com";
+const WARMUP_URL = "https://stockpredictors.com";
 
 async function stockPredictorStep(page, phase) {
   if (phase === "start") {
-    // Kick Render cold-start via server-side fetch before navigating Steel
+    // Fire warmup fetch in background (don't await) — just wakes Render without blocking
+    fetch(STOCK_URL, { signal: AbortSignal.timeout(8000) }).catch(() => {});
+    // Navigate immediately — Render may still be booting, that's fine
+    let navigationSuccess = false;
     try {
-      await fetch(STOCK_URL, { signal: AbortSignal.timeout(8000) });
-    } catch {
-      // warmup fetch failure is non-fatal — Render may still cold-boot
+      await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+      navigationSuccess = true;
+    } catch (navErr) {
+      console.error(`[stock-predictor] Navigation failed: ${navErr.message}`);
     }
-    await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
-    const loaded = await page.waitForSelector("h1, h2, h3", { timeout: 15000 })
+
+    return {
+      done: false,
+      phase: "await-boot",
+      step: "navigate",
+      action: "Navigating to Stock Predictor URL",
+      detail: `Loading ${STOCK_URL} (Render cold start may take 2-3 minutes)`,
+      evidence: card({
+        action: `navigate ${STOCK_URL}`,
+        targetSelector: ".stApp",
+        verdict: navigationSuccess ? "Navigated — waiting for Streamlit to finish booting" : "Navigation failed or timed out",
+        outcome: navigationSuccess ? "pass" : "fail",
+        screenshotThumb: await thumb(page),
+        diagnosis: navigationSuccess ? null : "Failed to load Stock Predictor URL",
+      }),
+    };
+  }
+
+  // Poll until Streamlit's .stApp is present — each call stays under 10s (function timeout safe)
+  if (phase === "await-boot") {
+    // Increased timeout to account for Render cold start (up to 3 minutes)
+    // We'll check in 10 second intervals, up to 18 checks (3 minutes)
+    const ready = await page.waitForSelector(".stApp, .stTextInput input, [data-testid='stAppViewContainer']", { timeout: 10000 })
       .then(() => true).catch(() => false);
+    if (!ready) {
+      // Still booting — loop back
+      return {
+        done: false,
+        phase: "await-boot",
+        step: "await-boot",
+        action: "Waiting for Streamlit to finish booting",
+        detail: "Render cold start in progress... checking for .stApp element",
+      };
+    }
+
+    // .stApp found, now wait for the actual input widget to be ready
+    const inputReady = await page.waitForSelector('input[aria-label="Ticker symbol"], input[aria-label*="ticker"], input[aria-label*="stock"], input[placeholder*="ticker"], input[placeholder*="AAPL"], input[placeholder*="symbol"], .stTextInput input', { timeout: 10000 })
+      .then(() => true).catch(() => false);
+
+    if (!inputReady) {
+      return {
+        done: false,
+        phase: "await-boot",
+        step: "await-widgets",
+        action: "Streamlit loaded — waiting for input widgets",
+        detail: ".stApp detected but ticker input not yet rendered",
+      };
+    }
+
     return {
       done: false,
       phase: "predict",
+      step: "await-boot-complete",
+      action: "Streamlit app fully loaded",
+      detail: "Ticker input widget detected — ready for interaction",
       evidence: card({
-        action: `warmup → navigate ${STOCK_URL}`,
-        targetSelector: "h1",
-        verdict: loaded ? "Stock Predictor page loaded" : "Page may not have loaded fully",
-        outcome: loaded ? "pass" : "fail",
+        action: "await Streamlit boot + widgets",
+        targetSelector: "input",
+        verdict: "Streamlit app is fully interactive",
+        outcome: "pass",
         screenshotThumb: await thumb(page),
       }),
     };
   }
 
   if (phase === "predict") {
-    const interacted = await page.evaluate(async () => {
+    // Step 1: Fill the ticker input
+    const filled = await page.evaluate(async () => {
       const delay = (ms) => new Promise((r) => setTimeout(r, ms));
       const input = document.querySelector('input[aria-label="Ticker symbol"], input[aria-label*="ticker"], input[aria-label*="stock"], input[placeholder*="ticker"], input[placeholder*="AAPL"], input[placeholder*="symbol"], .stTextInput input');
       if (!input) return false;
@@ -544,36 +643,125 @@ async function stockPredictorStep(page, phase) {
       nativeInputValueSetter.call(input, "AAPL");
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
-      await delay(500);
+      await delay(300);
+      return true;
+    });
+
+    if (!filled) {
+      return {
+        done: false,
+        phase: "extract",
+        step: "predict",
+        action: 'Failed to fill ticker "AAPL"',
+        detail: "Could not find or interact with ticker input",
+        evidence: card({
+          action: 'fill ticker "AAPL"',
+          targetSelector: "input",
+          verdict: "Could not interact with Streamlit ticker input",
+          outcome: "fail",
+          screenshotThumb: await thumb(page),
+          diagnosis: "Streamlit widget selectors may need adjustment",
+        }),
+      };
+    }
+
+    // Step 2: Click away from input to close multi-select dropdown
+    record("stockPredictor.predict", { phase: "close-dropdown" }, "invoking", "Clicking body to close ticker dropdown");
+    await page.mouse.click(10, 10);
+    await page.waitForTimeout(500);
+    record("stockPredictor.predict", { phase: "close-dropdown" }, "ok", "Dropdown dismissed");
+
+    // Step 3: Small pause for UI to settle
+    await page.waitForTimeout(500);
+
+    // Step 4: Use selector-based click for Predict button
+    record("stockPredictor.predict", { phase: "click-predict-selector" }, "invoking", "Finding Predict button via selector");
+    const selectorClicked = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll("button"));
-      const predictBtn = btns.find((b) => b.textContent.toLowerCase().includes("predict"));
+      const predictBtn = btns.find((b) => {
+        const text = b.textContent.toLowerCase();
+        return text.includes("predict") || text.includes("submit") || text.includes("run") || text.includes("forecast");
+      });
       if (predictBtn) { predictBtn.click(); return true; }
       return false;
     });
+    record("stockPredictor.predict", { phase: "click-predict-selector" }, selectorClicked ? "ok" : "fail", selectorClicked ? "Predict button clicked via selector" : "Could not find Predict button");
+
+    if (!selectorClicked) {
+      return {
+        done: false,
+        phase: "extract",
+        step: "predict",
+        action: 'Filled ticker "AAPL", could not find Predict button',
+        detail: "No button matching predict/submit/run/forecast found",
+        evidence: card({
+          action: 'fill ticker "AAPL" → click Predict (selector failed)',
+          targetSelector: "button",
+          verdict: "Failed to click Predict button",
+          outcome: "fail",
+          screenshotThumb: await thumb(page),
+          diagnosis: "Predict button text may not match expected patterns",
+        }),
+      };
+    }
+
+    // Step 5: Brief wait for Streamlit to register click and start computation
+    await page.waitForTimeout(3000);
 
     return {
       done: false,
       phase: "extract",
+      step: "predict",
+      action: 'Filled ticker "AAPL" → clicked Predict via selector → starting prediction',
+      detail: "Predict button clicked via selector; extract phase will poll for results.",
       evidence: card({
-        action: 'fill ticker "AAPL" → click Predict',
-        targetSelector: "input, button",
-        verdict: interacted ? "Ticker entered and Predict clicked" : "Could not interact with Streamlit widgets",
-        outcome: interacted ? "pass" : "fail",
+        action: 'fill ticker "AAPL" → click Predict (selector)',
+        targetSelector: "button",
+        verdict: "Ticker filled, Predict button clicked via selector",
+        outcome: "pass",
         screenshotThumb: await thumb(page),
-        diagnosis: interacted ? null : "Streamlit widget selectors may need adjustment",
       }),
     };
   }
-
   if (phase === "extract") {
+    // Poll for prediction results — Streamlit free tier can take 30-60s
+    // Wait for specific content indicating prediction is done
+    record("stockPredictor.extract", { phase: "wait-for-prediction" }, "invoking", "Polling for prediction results (Market Open/Close, Linear Regression, XGBoost, chart)");
+
+    const predictionReady = await page.waitForFunction(
+      () => {
+        const text = document.body.innerText.toLowerCase();
+        // Check for key prediction result indicators
+        return text.includes("market open") &&
+               text.includes("market close") &&
+               (text.includes("linear regression") || text.includes("xgboost")) &&
+               text.includes("chart");
+      },
+      { timeout: 90000, polling: 5000 }
+    ).then(() => true).catch(() => false);
+
+    if (!predictionReady) {
+      record("stockPredictor.extract", { phase: "wait-for-prediction" }, "fail", "Timeout waiting for prediction results after 90s");
+      // Still try to extract what we have
+    } else {
+      record("stockPredictor.extract", { phase: "wait-for-prediction" }, "ok", "Prediction results detected");
+    }
+
+    // Additional wait for chart/canvas to fully render
     await page.waitForTimeout(3000);
-    const shot = await page.screenshot({ type: "jpeg", quality: 75 });
+
+    record("stockPredictor.extract", { phase: "screenshot" }, "invoking", "Capturing full-page screenshot");
+    const shot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: true });
     const b64 = shot.toString("base64");
+    record("stockPredictor.extract", { phase: "screenshot", size: shot.length }, "ok", "Screenshot captured");
+
+    record("stockPredictor.extract", { phase: "scrape-text" }, "invoking", "Scraping visible page text");
     const text = await page.evaluate(() => {
       const unwanted = document.querySelectorAll("script, style, nav, footer, header");
       unwanted.forEach((el) => el.remove());
       return document.body.innerText.trim();
     }).catch(() => "(text extraction failed)");
+    record("stockPredictor.extract", { phase: "scrape-text", length: text.length }, "ok", "Text scraped");
 
     return {
       done: true,
@@ -581,12 +769,12 @@ async function stockPredictorStep(page, phase) {
       screenshotFull: b64,
       scrapedText: text.substring(0, 3000),
       apiCall: {
-        method: "page.screenshot → page.evaluate(innerText)",
+        method: "page.screenshot(fullPage) → page.evaluate(innerText)",
         params: { page: STOCK_URL, ticker: "AAPL" },
         description: "Screenshot the prediction result and scrape visible text for side-by-side comparison",
       },
       evidence: card({
-        action: `screenshot + scrape "${STOCK_URL}"`,
+        action: `screenshot(fullPage) + scrape "${STOCK_URL}"`,
         targetSelector: "body",
         verdict: "Prediction results captured as screenshot and text",
         outcome: "pass",
