@@ -11,7 +11,7 @@ const api = async (name, body, timeoutMs = 30000) => {
     });
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};
-    return res.ok ? data : { error: name + "_failed", detail: data.detail || data.error || res.statusText };
+    return res.ok ? data : { ...data, error: data.error || name + "_failed", detail: data.detail || data.error || res.statusText };
   } catch (err) {
     return { error: name + "_unreachable", detail: err.name === "AbortError" ? `Timed out after ${timeoutMs}ms` : err.message };
   } finally {
