@@ -4,7 +4,7 @@
 import { createSession, connect, release, relaunchWithProxy, clientView } from "./lib/steel.mjs";
 import { flowMeta } from "./lib/flows.mjs";
 import { classifyTiles } from "./lib/gemini.mjs";
-import { classifyTilesNVIDIA } from "./lib/nvidia.mjs";
+import { findElementNVIDIA } from "./lib/nvidia.mjs";
 import { card, thumb } from "./lib/evidence.mjs";
 import { popLog, record } from "./lib/logger.mjs";
 
@@ -555,35 +555,72 @@ async function stockPredictorStep(page, phase) {
     // Fire warmup fetch in background (don't await) — just wakes Render without blocking
     fetch(STOCK_URL, { signal: AbortSignal.timeout(8000) }).catch(() => {});
     // Navigate immediately — Render may still be booting, that's fine
-    await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
+    let navigationSuccess = false;
+    try {
+      await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+      navigationSuccess = true;
+    } catch (navErr) {
+      console.error(`[stock-predictor] Navigation failed: ${navErr.message}`);
+    }
+    
     return {
       done: false,
       phase: "await-boot",
+      step: "navigate",
+      action: "Navigating to Stock Predictor URL",
+      detail: `Loading ${STOCK_URL} (Render cold start may take 2-3 minutes)`,
       evidence: card({
         action: `navigate ${STOCK_URL}`,
         targetSelector: ".stApp",
-        verdict: "Navigated — waiting for Streamlit to finish booting",
-        outcome: "pass",
+        verdict: navigationSuccess ? "Navigated — waiting for Streamlit to finish booting" : "Navigation failed or timed out",
+        outcome: navigationSuccess ? "pass" : "fail",
         screenshotThumb: await thumb(page),
+        diagnosis: navigationSuccess ? null : "Failed to load Stock Predictor URL",
       }),
     };
   }
 
   // Poll until Streamlit's .stApp is present — each call stays under 10s (function timeout safe)
   if (phase === "await-boot") {
-    const ready = await page.waitForSelector(".stApp, .stTextInput input, [data-testid='stAppViewContainer']", { timeout: 7000 })
+    // Increased timeout to account for Render cold start (up to 3 minutes)
+    // We'll check in 10 second intervals, up to 18 checks (3 minutes)
+    const ready = await page.waitForSelector(".stApp, .stTextInput input, [data-testid='stAppViewContainer']", { timeout: 10000 })
       .then(() => true).catch(() => false);
     if (!ready) {
       // Still booting — loop back
-      return { done: false, phase: "await-boot" };
+      return { 
+        done: false, 
+        phase: "await-boot",
+        step: "await-boot",
+        action: "Waiting for Streamlit to finish booting",
+        detail: "Render cold start in progress... checking for .stApp element",
+      };
     }
+    
+    // .stApp found, now wait for the actual input widget to be ready
+    const inputReady = await page.waitForSelector('input[aria-label="Ticker symbol"], input[aria-label*="ticker"], input[aria-label*="stock"], input[placeholder*="ticker"], input[placeholder*="AAPL"], input[placeholder*="symbol"], .stTextInput input', { timeout: 10000 })
+      .then(() => true).catch(() => false);
+    
+    if (!inputReady) {
+      return { 
+        done: false, 
+        phase: "await-boot",
+        step: "await-widgets",
+        action: "Streamlit loaded — waiting for input widgets",
+        detail: ".stApp detected but ticker input not yet rendered",
+      };
+    }
+    
     return {
       done: false,
       phase: "predict",
+      step: "await-boot-complete",
+      action: "Streamlit app fully loaded",
+      detail: "Ticker input widget detected — ready for interaction",
       evidence: card({
-        action: "await Streamlit boot",
-        targetSelector: ".stApp",
-        verdict: "Streamlit app is interactive",
+        action: "await Streamlit boot + widgets",
+        targetSelector: "input",
+        verdict: "Streamlit app is fully interactive",
         outcome: "pass",
         screenshotThumb: await thumb(page),
       }),
@@ -591,7 +628,8 @@ async function stockPredictorStep(page, phase) {
   }
 
   if (phase === "predict") {
-    const interacted = await page.evaluate(async () => {
+    // Step 1: Fill the ticker input
+    const filled = await page.evaluate(async () => {
       const delay = (ms) => new Promise((r) => setTimeout(r, ms));
       const input = document.querySelector('input[aria-label="Ticker symbol"], input[aria-label*="ticker"], input[aria-label*="stock"], input[placeholder*="ticker"], input[placeholder*="AAPL"], input[placeholder*="symbol"], .stTextInput input');
       if (!input) return false;
@@ -599,36 +637,110 @@ async function stockPredictorStep(page, phase) {
       nativeInputValueSetter.call(input, "AAPL");
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
-      await delay(500);
-      const btns = Array.from(document.querySelectorAll("button"));
-      const predictBtn = btns.find((b) => b.textContent.toLowerCase().includes("predict"));
-      if (predictBtn) { predictBtn.click(); return true; }
-      return false;
+      await delay(300);
+      return true;
     });
+
+    if (!filled) {
+      return {
+        done: false,
+        phase: "extract",
+        step: "predict",
+        action: 'Failed to fill ticker "AAPL"',
+        detail: "Could not find or interact with ticker input",
+        evidence: card({
+          action: 'fill ticker "AAPL"',
+          targetSelector: "input",
+          verdict: "Could not interact with Streamlit ticker input",
+          outcome: "fail",
+          screenshotThumb: await thumb(page),
+          diagnosis: "Streamlit widget selectors may need adjustment",
+        }),
+      };
+    }
+
+    // Step 2: Take screenshot and use NVIDIA to find Predict button
+    const screenshot = await page.screenshot({ type: "jpeg", quality: 75 });
+    const b64 = screenshot.toString("base64");
+
+    record("stockPredictor.predict", { phase: "find-predict-button" }, "invoking", "Using NVIDIA vision to locate Predict button");
+    const element = await findElementNVIDIA(b64, "Predict button").catch((e) => {
+      console.error("[stock-predictor] NVIDIA find element error:", e.message);
+      return { found: false, x_percent: 50, y_percent: 50, confidence: 0, reasoning: e.message };
+    });
+    record("stockPredictor.predict", { phase: "find-predict-button", ...element }, element.found ? "ok" : "fail", element.reasoning);
+
+    if (!element.found || element.confidence < 30) {
+      // Fallback: try selector-based click
+      const fallbackClicked = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll("button"));
+        const predictBtn = btns.find((b) => b.textContent.toLowerCase().includes("predict"));
+        if (predictBtn) { predictBtn.click(); return true; }
+        return false;
+      });
+      
+      return {
+        done: false,
+        phase: "extract",
+        step: "predict",
+        action: 'Filled ticker "AAPL", attempted Predict click (fallback)',
+        detail: fallbackClicked ? "Predict button clicked via fallback selector" : "Could not find Predict button via NVIDIA or fallback",
+        evidence: card({
+          action: 'fill ticker "AAPL" → click Predict (fallback)',
+          targetSelector: "button",
+          verdict: fallbackClicked ? "Predict clicked via fallback" : "Failed to click Predict button",
+          outcome: fallbackClicked ? "pass" : "fail",
+          screenshotThumb: await thumb(page),
+          diagnosis: fallbackClicked ? null : "NVIDIA vision couldn't locate Predict button, fallback also failed",
+        }),
+      };
+    }
+
+    // Step 3: Click at the coordinates NVIDIA found
+    const viewport = page.viewportSize();
+    const clickX = Math.round(viewport.width * element.x_percent / 100);
+    const clickY = Math.round(viewport.height * element.y_percent / 100);
+    
+    record("stockPredictor.predict", { phase: "click-predict", x: clickX, y: clickY }, "invoking", `Clicking Predict button at (${clickX}, ${clickY})`);
+    await page.mouse.click(clickX, clickY);
+    record("stockPredictor.predict", { phase: "click-predict", x: clickX, y: clickY }, "ok", "Predict button clicked");
+
+    // Step 4: Wait for prediction to render
+    await page.waitForTimeout(4000);
 
     return {
       done: false,
       phase: "extract",
+      step: "predict",
+      action: 'Filled ticker "AAPL" → NVIDIA found Predict button → clicked → waiting for prediction',
+      detail: `NVIDIA located Predict button at ${element.x_percent}%, ${element.y_percent}% (confidence: ${element.confidence}%). Clicked and waiting for results.`,
       evidence: card({
-        action: 'fill ticker "AAPL" → click Predict',
-        targetSelector: "input, button",
-        verdict: interacted ? "Ticker entered and Predict clicked" : "Could not interact with Streamlit widgets",
-        outcome: interacted ? "pass" : "fail",
+        action: 'fill ticker "AAPL" → NVIDIA vision click Predict',
+        targetSelector: "button",
+        verdict: "Ticker filled, Predict button clicked via NVIDIA vision",
+        outcome: "pass",
         screenshotThumb: await thumb(page),
-        diagnosis: interacted ? null : "Streamlit widget selectors may need adjustment",
+        diagnosis: `NVIDIA reasoning: ${element.reasoning}`,
       }),
     };
   }
 
   if (phase === "extract") {
+    record("stockPredictor.extract", { phase: "wait-for-render" }, "invoking", "Waiting 3s for prediction to fully render");
     await page.waitForTimeout(3000);
-    const shot = await page.screenshot({ type: "jpeg", quality: 75 });
+    
+    record("stockPredictor.extract", { phase: "screenshot" }, "invoking", "Capturing full-page screenshot");
+    const shot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: true });
     const b64 = shot.toString("base64");
+    record("stockPredictor.extract", { phase: "screenshot", size: shot.length }, "ok", "Screenshot captured");
+    
+    record("stockPredictor.extract", { phase: "scrape-text" }, "invoking", "Scraping visible page text");
     const text = await page.evaluate(() => {
       const unwanted = document.querySelectorAll("script, style, nav, footer, header");
       unwanted.forEach((el) => el.remove());
       return document.body.innerText.trim();
     }).catch(() => "(text extraction failed)");
+    record("stockPredictor.extract", { phase: "scrape-text", length: text.length }, "ok", "Text scraped");
 
     return {
       done: true,
@@ -636,12 +748,12 @@ async function stockPredictorStep(page, phase) {
       screenshotFull: b64,
       scrapedText: text.substring(0, 3000),
       apiCall: {
-        method: "page.screenshot → page.evaluate(innerText)",
+        method: "page.screenshot(fullPage) → page.evaluate(innerText)",
         params: { page: STOCK_URL, ticker: "AAPL" },
         description: "Screenshot the prediction result and scrape visible text for side-by-side comparison",
       },
       evidence: card({
-        action: `screenshot + scrape "${STOCK_URL}"`,
+        action: `screenshot(fullPage) + scrape "${STOCK_URL}"`,
         targetSelector: "body",
         verdict: "Prediction results captured as screenshot and text",
         outcome: "pass",

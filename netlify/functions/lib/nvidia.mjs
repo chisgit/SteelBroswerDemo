@@ -72,6 +72,84 @@ export async function classifyTilesNVIDIA(tiles, target) {
   };
 }
 
+/**
+ * Use NVIDIA MiniMax-M3 to visually find a UI element (e.g., "Predict button") on a screenshot
+ * and return its approximate center coordinates as percentages (0-100).
+ * @param {string} b64Screenshot - Base64 encoded screenshot
+ * @param {string} targetDescription - Description of element to find (e.g., "Predict button", "Submit button")
+ * @returns {Promise<{x: number, y: number, found: boolean, confidence: number, reasoning: string}>}
+ */
+export async function findElementNVIDIA(b64Screenshot, targetDescription) {
+  const key = process.env.NVIDIA_API_KEY;
+  if (!key) throw new Error("NVIDIA_API_KEY not configured");
+
+  console.log(`[nvidia-find-element] target="${targetDescription}"`);
+
+  const messages = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `You are an AI that visually locates UI elements on web pages. 
+Look at this screenshot and find the ${targetDescription}.
+Return ONLY strict JSON:
+{
+  "found": true|false,
+  "x_percent": <0-100, horizontal center>,
+  "y_percent": <0-100, vertical center>,
+  "confidence": <0-100>,
+  "reasoning": "brief description of what you see"
+}
+If the element is not visible, return found: false with x_percent: 50, y_percent: 50.`,
+        },
+        {
+          type: "image_url",
+          image_url: { url: `data:image/jpeg;base64,${b64Screenshot}` },
+        },
+      ],
+    },
+  ];
+
+  const payload = {
+    model: MODEL,
+    messages,
+    max_tokens: 256,
+    temperature: 0.1,
+    top_p: 0.5,
+    stream: false,
+  };
+
+  console.log(`[nvidia-find-element] calling MiniMax-M3...`);
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    console.error(`[nvidia-find-element] API error ${response.status}:`, err);
+    throw new Error(`NVIDIA API ${response.status}: ${err.slice(0, 100)}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  console.log(`[nvidia-find-element] response:`, text.slice(0, 200));
+
+  const result = parseJson(text);
+  return {
+    found: result.found ?? false,
+    x_percent: result.x_percent ?? 50,
+    y_percent: result.y_percent ?? 50,
+    confidence: result.confidence ?? 0,
+    reasoning: result.reasoning ?? "No reasoning provided",
+  };
+}
+
 function parseJson(text) {
   const cleaned = String(text).replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   try {

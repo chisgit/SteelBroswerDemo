@@ -5,6 +5,7 @@ const api = (name, body) =>
 
 let session = null;
 let callCount = 0;
+let lastLogKey = null; // for deduplication
 
 init();
 
@@ -12,27 +13,50 @@ async function init() {
   setBanner("Pre-warming a Steel session…");
   setSnippet('await client.sessions.create({});', "Creating a Steel cloud browser session.");
 
-  session = await api("session-create", {});
-  if (session.error) {
-    setBanner("Steel session failed — check API key");
-    addLog({ method: "sessions.create", params: {}, status: "error", detail: session.detail || "Session creation failed" });
-    return;
+  try {
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Session creation timeout')), 15000)
+    );
+    const apiPromise = api("session-create", {});
+    session = await Promise.race([apiPromise, timeoutPromise]);
+    
+    if (session.error) {
+      setBanner("Steel session failed — check API key");
+      addLog({ method: "sessions.create", params: {}, status: "error", detail: session.detail || "Session creation failed" });
+      return;
+    }
+
+    if (session.apiLog) {
+      session.apiLog.forEach(entry => addLog({ ...entry, _phase: "session-create" }));
+    }
+
+    // Defensive check for debugUrl
+    if (!session.debugUrl) {
+      throw new Error('Invalid session: missing debugUrl');
+    }
+
+    $("viewer").src = session.debugUrl + "?interactive=false&showControls=true";
+    $("sval-id").textContent = (session.sessionId || "").slice(0, 16) + "…";
+    $("sval-status").textContent = "connected";
+    $("sval-status").className = "sval ok";
+
+    setSnippet(
+      `const session = await client.sessions.create({});\n// sessionId: "${(session.sessionId || "").slice(0, 8)}…"`,
+      "Session live — Steel cloud browser ready."
+    );
+    setBanner("Ready — click Run demo");
+    $("run-btn").disabled = false;
+    $("run-btn").addEventListener("click", runDemo);
+  } catch (err) {
+    console.error('[stock-predictor] Init error:', err);
+    setBanner(`Steel session failed: ${err.message}`);
+    addLog({ method: "sessions.create", params: {}, status: "error", detail: err.message });
+    $("run-btn").disabled = false;
+    // Enable retry on click
+    $("run-btn").textContent = "Retry";
+    $("run-btn").onclick = () => location.reload();
   }
-
-  if (session.apiLog) session.apiLog.forEach(addLog);
-
-  $("viewer").src = session.debugUrl + "?interactive=false&showControls=true";
-  $("sval-id").textContent = (session.sessionId || "").slice(0, 16) + "…";
-  $("sval-status").textContent = "connected";
-  $("sval-status").className = "sval ok";
-
-  setSnippet(
-    `const session = await client.sessions.create({});\n// sessionId: "${(session.sessionId || "").slice(0, 8)}…"`,
-    "Session live — Steel cloud browser ready."
-  );
-  setBanner("Ready — click Run demo");
-  $("run-btn").disabled = false;
-  $("run-btn").addEventListener("click", runDemo);
 }
 
 async function runDemo() {
@@ -56,7 +80,9 @@ async function runDemo() {
       phase,
     });
 
-    if (res.apiLog) res.apiLog.forEach(addLog);
+    if (res.apiLog) {
+      res.apiLog.forEach(entry => addLog({ ...entry, _phase: phase, _step: res.step }));
+    }
     if (res.evidence) appendEvidence(res.evidence, meta.proves);
 
     if (res.screenshotFull && res.scrapedText) {
@@ -117,6 +143,38 @@ function setProve(text) {
 }
 
 function addLog(entry) {
+  // Filter: only show "interesting" Steel/dev API calls, skip internal record() noise
+  const interestingMethods = [
+    "sessions.create",
+    "sessions.release",
+    "sessions.releaseAll",
+    "chromium.connectOverCDP",
+    "page.goto",
+    "page.waitForSelector",
+    "page.screenshot",
+    "page.evaluate",
+    "page.mouse.click",
+    "page.click",
+    "page.fill",
+    "page.type",
+    "stockPredictor.predict",
+    "stockPredictor.extract",
+    "nvidia-find-element",
+    "nvidia-vision",
+    "gemini.classifyTiles",
+  ];
+  
+  const method = entry.method || "call";
+  const isInteresting = interestingMethods.some(m => method.includes(m)) || 
+                        (entry.status && entry.status !== "invoking"); // show completed/failed calls
+  
+  if (!isInteresting) return;
+
+  // Deduplication key: method + phase + step + detail (first 80 chars)
+  const dedupeKey = `${method}|${entry._phase || ""}|${entry._step || ""}|${(entry.detail || "").slice(0, 80)}`;
+  if (dedupeKey === lastLogKey) return;
+  lastLogKey = dedupeKey;
+
   callCount++;
   $("call-count").textContent = `${callCount} call${callCount !== 1 ? "s" : ""}`;
   const log = $("api-log");
@@ -127,14 +185,20 @@ function addLog(entry) {
     ? Object.entries(entry.params).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", ")
     : null;
 
+  // Build phase/step badge
+  const phaseBadge = entry._phase 
+    ? `<span style="font-size:0.65rem;padding:0.1rem 0.35rem;background:var(--panel2);border:1px solid var(--line);border-radius:3px;margin-right:0.4rem;font-family:monospace">${entry._phase}${entry._step ? "·" + entry._step : ""}</span>`
+    : "";
+
   const statusColor = entry.status === "ok" ? "var(--ok)"
     : (entry.status || "").startsWith("429") ? "var(--warn)"
+    : entry.status === "invoking" ? "var(--accent)"
     : "var(--muted)";
 
   const line = document.createElement("div");
   line.className = "log-line";
   line.innerHTML =
-    `<span class="log-method">${entry.method || "call"}</span>` +
+    `${phaseBadge}<span class="log-method">${method}</span>` +
     (params ? ` <span class="log-desc" style="color:var(--muted);font-size:0.78em">{ ${params} }</span>` : "") +
     (entry.status ? ` <span class="log-desc" style="color:${statusColor}">→ ${entry.status}</span>` : "") +
     (entry.detail ? ` <span class="log-desc" style="color:var(--muted);font-size:0.75em">${entry.detail}</span>` : "");
