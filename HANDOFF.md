@@ -1,5 +1,5 @@
 # HANDOFF — Steel Demo Hub
-Updated: 2026-06-19 | Branch: `main` (merged)
+Updated: 2026-06-19 | Branch: `fix/review-issues` (open PR #4)
 
 ## Workspace
 - Path: `c:\Users\User\SteelBroswerDemo`
@@ -26,12 +26,17 @@ npx netlify deploy --prod
 | Agent step engine | [netlify/functions/agent-step.mjs](netlify/functions/agent-step.mjs) |
 | Steel SDK wrapper | [netlify/functions/lib/steel.mjs](netlify/functions/lib/steel.mjs) |
 | Session create fn | [netlify/functions/session-create.mjs](netlify/functions/session-create.mjs) |
+| Session resume fn | [netlify/functions/session-resume.mjs](netlify/functions/session-resume.mjs) |
 | API call logger | [netlify/functions/lib/logger.mjs](netlify/functions/lib/logger.mjs) |
 | NVIDIA classifier | [netlify/functions/lib/nvidia.mjs](netlify/functions/lib/nvidia.mjs) |
 | Gemini classifier | [netlify/functions/lib/gemini.mjs](netlify/functions/lib/gemini.mjs) |
+| Steel tier test | [test_steel_tier.mjs](test_steel_tier.mjs) |
 
 ## Active branches
-All feature work merged into `main`. No active feature branches.
+| Branch | Status | Priority |
+|--------|--------|----------|
+| `fix/review-issues` | 🔄 code review fixes (PR #4) | 1 — merge after review |
+| `main` | ✅ all demos live | — |
 
 ## What's done
 - Full gauntlet: 6 routes implemented (hCaptcha, vision-grid, bot-wall, mobile-bug, recaptcha/turnstile skipped on hobby)
@@ -48,19 +53,22 @@ All feature work merged into `main`. No active feature branches.
 - **Stock Predictor demo** — sessions.create + live API call streaming, side-by-side comparison
 - **Demo hub tile** added for Stock Predictor on landing page
 
-## What's next
-1. Deploy merged `main` to Netlify production
-2. Smoke test Stock Predictor demo end-to-end on live site
-3. Demo rehearsal — Full Gauntlet timing + evidence cards + fleet variance
+## What's next (PR #4)
+1. Code review `fix/review-issues` (9 commits fixing P0/P1/P2 findings)
+2. Merge PR #4 to `main`
+3. Deploy to Netlify production — verify Stock Predictor + Math Arcade demos work live
+4. Manual smoke test: Full Gauntlet timing + evidence cards + fleet variance
 
 ## Workflow rules
 - Commit per feature cluster; conventional style
-- `main` is stable demo — feature work on `feat/<name>` branches
+- `main` is stable demo — feature work on `feat/<name>` or `fix/<name>` branches
 - Verification: manual browser test (no unit test suite — demoware)
 - Deploy: `npx netlify deploy --prod` from project root
 - Hobby plan: 1 concurrent session limit — never create 2nd session while game session is alive
-- `conn._closed = true` before any explicit `browser.close()` — prevents double-close with `finally`
+- Math-arcade phases manage their own CDP lifecycle (avoid wasteful per-phase reconnects)
+- `catch(()=>null)` on critical evaluate calls — `catch(()=>0)` masks failures as success
 - `sessions.releaseAll()` on 429 in `createSession` — auto-clears leaked sessions, retries once
+- Test cleanup: always release created sessions in finally block
 
 ## Locked decisions
 - Front-end-drives-loop: each `/agent-step` is one atomic ≤10s cycle; UI loops until `done:true`
@@ -69,6 +77,9 @@ All feature work merged into `main`. No active feature branches.
 - `solveCaptcha` routes skip on hobby tier (`isHobbyTier = true` in `tokenRoute`)
 - Own site only — no third-party automation
 - `other-work` uses serverless fetch only — hobby plan 1-session limit means no concurrent Steel session
+- **Session-resume does NOT return websocketUrl** — client never sees `STEEL_API_KEY` (P0 security fix)
+- **Math-arcade phases manage own CDP lifecycle** — skip shared `connect()` for detach/other-work/resume/finish
+- **Evaluate failures must be distinguishable** — use `catch(()=>null)`, not `catch(()=>0)`, on critical reads
 
 ## Git history note — secret scrub
 - GEMINI_API_KEY + STEEL_API_KEY scrubbed from history via `git-filter-repo` on 2026-06-18
