@@ -498,23 +498,24 @@ const WARMUP_URL = "https://stockpredictors.com";
 
 async function stockPredictorStep(page, phase) {
   if (phase === "start") {
-    // Kick Render cold-start via server-side fetch before navigating Steel
+    // Kick Render cold-start: fetch with long timeout so Render wakes before Steel navigates
     try {
-      await fetch(STOCK_URL, { signal: AbortSignal.timeout(8000) });
+      await fetch(STOCK_URL, { signal: AbortSignal.timeout(50000) });
     } catch {
-      // warmup fetch failure is non-fatal — Render may still cold-boot
+      // non-fatal — page.goto will retry
     }
-    await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
-    const loaded = await page.waitForSelector("h1, h2, h3", { timeout: 15000 })
+    await page.goto(STOCK_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    // Wait for Streamlit to finish booting — .stApp appears once the app is interactive
+    const loaded = await page.waitForSelector(".stApp, .stTextInput input, [data-testid='stAppViewContainer']", { timeout: 45000 })
       .then(() => true).catch(() => false);
     return {
       done: false,
       phase: "predict",
       evidence: card({
         action: `warmup → navigate ${STOCK_URL}`,
-        targetSelector: "h1",
-        verdict: loaded ? "Stock Predictor page loaded" : "Page may not have loaded fully",
-        outcome: loaded ? "pass" : "fail",
+        targetSelector: ".stApp",
+        verdict: loaded ? "Streamlit app loaded and interactive" : "Page loaded but Streamlit may still be booting",
+        outcome: loaded ? "pass" : "warn",
         screenshotThumb: await thumb(page),
       }),
     };

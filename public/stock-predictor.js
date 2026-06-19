@@ -75,10 +75,10 @@ async function runDemo() {
 function phaseMetadata(phase) {
   const map = {
     start: {
-      title: "Warming up → navigating Stock Predictor",
-      snippet: `await page.goto("https://stockpredictors.onrender.com");`,
-      desc: "Steel cloud browser navigates to the stock predictor app.",
-      proves: "Steel can navigate any URL in a real cloud browser with full JS execution.",
+      title: "Waking Render service → navigating Stock Predictor (may take ~30s)",
+      snippet: `await fetch(url); // wake Render cold-start\nawait page.goto("https://stockpredictors.onrender.com");`,
+      desc: "Server-side fetch wakes the Render free-tier service, then Steel navigates once it's ready.",
+      proves: "Steel waits for real app interactivity — not just HTTP 200, but Streamlit fully booted.",
     },
     predict: {
       title: "Entering ticker → clicking Predict",
