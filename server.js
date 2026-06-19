@@ -1,5 +1,15 @@
-const express = require('express');
-const path = require('path');
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import { handler as agentStepHandler } from './netlify/functions/agent-step.mjs';
+import { handler as sessionCreateHandler } from './netlify/functions/session-create.mjs';
+import { handler as sessionResumeHandler } from './netlify/functions/session-resume.mjs';
+import { handler as fleetRunHandler } from './netlify/functions/fleet-run.mjs';
+import { handler as healthHandler } from './netlify/functions/health.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,13 +18,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json()); // for parsing application/json
 
-// Import the Netlify function handlers
-const { handler: agentStepHandler } = require('./netlify/functions/agent-step.mjs');
-const { handler: sessionCreateHandler } = require('./netlify/functions/session-create.mjs');
-const { handler: sessionResumeHandler } = require('./netlify/functions/session-resume.mjs');
-const { handler: fleetRunHandler } = require('./netlify/functions/fleet-run.mjs');
-const { handler: healthHandler } = require('./netlify/functions/health.mjs');
-
 // API routes - mirroring Netlify functions
 app.post('/api/session-create', async (req, res) => {
   try {
@@ -22,6 +25,16 @@ app.post('/api/session-create', async (req, res) => {
     res.status(result.statusCode || 200).set(result.headers || {}).send(result.body);
   } catch (error) {
     console.error('Session create error:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/session-resume', async (req, res) => {
+  try {
+    const result = await sessionResumeHandler({ body: JSON.stringify(req.body) });
+    res.status(result.statusCode || 200).set(result.headers || {}).send(result.body);
+  } catch (error) {
+    console.error('Session resume error:', error);
     res.status(500).send({ error: 'Internal server error' });
   }
 });
@@ -65,4 +78,4 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
 
-module.exports = app;
+export default app;
