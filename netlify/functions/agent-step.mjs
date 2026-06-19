@@ -779,87 +779,62 @@ async function stockPredictorStep(page, phase) {
 
     // Step 2: Click away from input to close multi-select dropdown
     record("stockPredictor.predict", { phase: "close-dropdown" }, "invoking", "Clicking body to close ticker dropdown");
-    await page.mouse.click(10, 10); // Click top-left corner to dismiss dropdown
+    await page.mouse.click(10, 10);
     await page.waitForTimeout(500);
     record("stockPredictor.predict", { phase: "close-dropdown" }, "ok", "Dropdown dismissed");
 
     // Step 3: Small pause for UI to settle
     await page.waitForTimeout(500);
 
-    // Step 4: Take screenshot and use NVIDIA to find Predict button (optional - skip if no valid API key)
-    const screenshot = await page.screenshot({ type: "jpeg", quality: 75 });
-    const b64 = screenshot.toString("base64");
-    
-    let element = { found: false, x_percent: 50, y_percent: 50, confidence: 0, reasoning: "NVIDIA vision skipped - using fallback selector" };
-    
-    // Only try NVIDIA vision if API key is available
-    if (process.env.NVIDIA_API_KEY) {
-      record("stockPredictor.predict", { phase: "find-predict-button" }, "invoking", "Using NVIDIA vision to locate Predict button");
-      const nvidiaResult = await findElementNVIDIA(b64, "Predict button").catch((e) => {
-        console.error("[stock-predictor] NVIDIA find element error:", e.message);
-        return { found: false, x_percent: 50, y_percent: 50, confidence: 0, reasoning: e.message };
+    // Step 4: Use selector-based click for Predict button
+    record("stockPredictor.predict", { phase: "click-predict-selector" }, "invoking", "Finding Predict button via selector");
+    const selectorClicked = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll("button"));
+      const predictBtn = btns.find((b) => {
+        const text = b.textContent.toLowerCase();
+        return text.includes("predict") || text.includes("submit") || text.includes("run") || text.includes("forecast");
       });
-      record("stockPredictor.predict", { phase: "find-predict-button", ...nvidiaResult }, nvidiaResult.found ? "ok" : "fail", nvidiaResult.reasoning);
-      if (nvidiaResult.found && nvidiaResult.confidence >= 30) {
-        element = nvidiaResult;
-      }
-    }
+      if (predictBtn) { predictBtn.click(); return true; }
+      return false;
+    });
+    record("stockPredictor.predict", { phase: "click-predict-selector" }, selectorClicked ? "ok" : "fail", selectorClicked ? "Predict button clicked via selector" : "Could not find Predict button");
 
-    if (!element.found || element.confidence < 30) {
-      // Fallback: try selector-based click
-      const fallbackClicked = await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll("button"));
-        const predictBtn = btns.find((b) => b.textContent.toLowerCase().includes("predict"));
-        if (predictBtn) { predictBtn.click(); return true; }
-        return false;
-      });
-      
+    if (!selectorClicked) {
       return {
         done: false,
         phase: "extract",
         step: "predict",
-        action: 'Filled ticker "AAPL", attempted Predict click (fallback)',
-        detail: fallbackClicked ? "Predict button clicked via fallback selector" : "Could not find Predict button via NVIDIA or fallback",
+        action: 'Filled ticker "AAPL", could not find Predict button',
+        detail: "No button matching predict/submit/run/forecast found",
         evidence: card({
-          action: 'fill ticker "AAPL" → click Predict (fallback)',
+          action: 'fill ticker "AAPL" → click Predict (selector failed)',
           targetSelector: "button",
-          verdict: fallbackClicked ? "Predict clicked via fallback" : "Failed to click Predict button",
-          outcome: fallbackClicked ? "pass" : "fail",
+          verdict: "Failed to click Predict button",
+          outcome: "fail",
           screenshotThumb: await thumb(page),
-          diagnosis: fallbackClicked ? null : "NVIDIA vision couldn't locate Predict button, fallback also failed",
+          diagnosis: "Predict button text may not match expected patterns",
         }),
       };
     }
 
-    // Step 3: Click at the coordinates NVIDIA found
-    const viewport = page.viewportSize();
-    const clickX = Math.round(viewport.width * element.x_percent / 100);
-    const clickY = Math.round(viewport.height * element.y_percent / 100);
-    
-    record("stockPredictor.predict", { phase: "click-predict", x: clickX, y: clickY }, "invoking", `Clicking Predict button at (${clickX}, ${clickY})`);
-    await page.mouse.click(clickX, clickY);
-    record("stockPredictor.predict", { phase: "click-predict", x: clickX, y: clickY }, "ok", "Predict button clicked");
-
-    // Step 4: Brief wait for Streamlit to register click and start computation
+    // Step 5: Brief wait for Streamlit to register click and start computation
     await page.waitForTimeout(3000);
 
     return {
       done: false,
       phase: "extract",
       step: "predict",
-      action: 'Filled ticker "AAPL" → NVIDIA found Predict button → clicked → starting prediction',
-      detail: `NVIDIA located Predict button at ${element.x_percent}%, ${element.y_percent}% (confidence: ${element.confidence}%). Clicked; extract phase will poll for results.`,
+      action: 'Filled ticker "AAPL" → clicked Predict via selector → starting prediction',
+      detail: "Predict button clicked via selector; extract phase will poll for results.",
       evidence: card({
-        action: 'fill ticker "AAPL" → NVIDIA vision click Predict',
+        action: 'fill ticker "AAPL" → click Predict (selector)',
         targetSelector: "button",
-        verdict: "Ticker filled, Predict button clicked via NVIDIA vision",
+        verdict: "Ticker filled, Predict button clicked via selector",
         outcome: "pass",
         screenshotThumb: await thumb(page),
-        diagnosis: `NVIDIA reasoning: ${element.reasoning}`,
       }),
     };
   }
-
   if (phase === "extract") {
     // Poll for prediction results — Streamlit free tier can take 30-60s
     // Wait for specific content indicating prediction is done
