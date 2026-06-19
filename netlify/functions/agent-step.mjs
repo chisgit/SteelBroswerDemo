@@ -1,21 +1,26 @@
 // The agent loop's atomic step (KTD1): exactly one observe->decide->act cycle,
 // returns structured state so the front-end can loop (U5). One screenshot + at most
 // one model call + one action per invocation to stay under the 10s free-tier cap.
-import { createSession, connect, release, relaunchWithStealth, clientView } from "./lib/steel.mjs";
+import { createSession, connect, release, relaunchWithProxy, clientView } from "./lib/steel.mjs";
 import { flowMeta } from "./lib/flows.mjs";
 import { classifyTiles } from "./lib/gemini.mjs";
+import { classifyTilesNVIDIA } from "./lib/nvidia.mjs";
 import { card, thumb } from "./lib/evidence.mjs";
+import { popLog } from "./lib/logger.mjs";
 
 const BASE = process.env.GAUNTLET_BASE_URL || "";
 
 export const handler = async (event) => {
   let conn;
+  let route = "?";
   try {
-    const { sessionId, websocketUrl, route, phase = "start", baseUrl } =
-      JSON.parse(event.body || "{}");
+    const parsed = JSON.parse(event.body || "{}");
+    route = parsed.route || "unknown";
+    const { sessionId, websocketUrl, phase = "start", baseUrl } = parsed;
     const meta = flowMeta(route);
     const base = baseUrl || BASE || originFrom(event);
 
+    console.log(`[step] ${route}/${phase}`);
     conn = await connect(websocketUrl, sessionId);
     const { page } = conn;
 
@@ -25,10 +30,13 @@ export const handler = async (event) => {
       feature: meta.feature,
       proves: meta.proves,
       apiSnippet: meta.apiSnippet,
+      docsUrl: meta.docsUrl,
+      apiLog: popLog(),
       ...result,
     });
   } catch (err) {
-    return json(502, { error: "agent_step_failed", detail: err.message, done: true, outcome: "fail" });
+    console.error(`[step] ERROR ${route}:`, err.message);
+    return json(502, { error: "agent_step_failed", detail: err.message, done: true, outcome: "fail", apiLog: popLog() });
   } finally {
     if (conn?.browser) await conn.browser.close().catch(() => {});
   }
@@ -156,7 +164,7 @@ async function hcaptchaStep(page, base, phase, meta) {
   };
 }
 
-// Vision-grid: screenshot tiles, classify with Gemini, click matches, submit.
+// Vision-grid: screenshot tiles, classify with NVIDIA MiniMax-M3, click matches, submit.
 async function visionGridStep(page, base, phase) {
   if (phase === "start") {
     await page.goto(base + flowMeta("vision-grid").path, { waitUntil: "networkidle" });
@@ -165,7 +173,8 @@ async function visionGridStep(page, base, phase) {
 
   // Pull each tile as its own base64 image (per-tile vision, KTD4).
   const tiles = await tilesAsBase64(page);
-  const { matches, verdicts } = await classifyTiles(tiles, "dog");
+  // Use NVIDIA MiniMax-M3 for vision classification (faster + reliable free tier).
+  const { matches, verdicts } = await classifyTilesNVIDIA(tiles, "dog");
 
   for (const id of matches) {
     await page.click("#tile-" + id).catch(() => {});
@@ -185,9 +194,9 @@ async function visionGridStep(page, base, phase) {
     outcome,
     selected: matches,
     apiCall: {
-      method: "page.screenshot → gemini.classifyTiles → page.click",
+      method: "page.screenshot → nvidia-minimax-m3.classifyTiles → page.click",
       params: { tileCount: tiles.length, target: "dog", matches: matches.length },
-      description: `Screenshot ${tiles.length} tiles → Gemini classifies each → click ${matches.length} matching tiles → submit`,
+      description: `Screenshot ${tiles.length} tiles → NVIDIA MiniMax-M3 classifies each → click ${matches.length} matching tiles → submit`,
     },
     evidence: card({
       action: `vision-classify ${tiles.length} tiles for "dog" → click matches`,
@@ -212,7 +221,7 @@ async function botWallStep(page, base, phase, sessionId, meta) {
     if (walled) {
       // Relaunch with stealth + proxy. This returns a NEW session; we hand it back so
       // the UI re-embeds its debugUrl, and the next step (continue) drives it.
-      const fresh = await relaunchWithStealth(sessionId, { solveCaptcha: true });
+      const fresh = await relaunchWithProxy(sessionId, { solveCaptcha: true });
       return {
         done: false,
         outcome: "fail",

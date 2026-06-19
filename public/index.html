@@ -88,15 +88,15 @@
 </head>
 <body>
   <header class="hero">
-    <h1>Steel Demo Hub</h1>
+    <h1>Steel Sessions API — Live Demo</h1>
     <p>
-      A set of live, autonomous demos powered by the <strong>Steel Sessions API</strong>.
-      Each demo drives a real Steel cloud browser through a challenge — pick one below.
+      Each route runs a <strong>real Steel cloud browser</strong> via <code>sessions.create()</code> + CDP, orchestrated
+      by a Gemini Flash agent deployed as Netlify serverless functions. No self-hosting. Pick a demo below.
     </p>
     <div class="arch">
-      <span class="node">Static UI</span><span class="arrow">→</span>
-      <span class="node">Netlify Function (agent)</span><span class="arrow">→</span>
-      <span class="node">Steel cloud browser</span><span class="arrow">→</span>
+      <span class="node">Browser UI</span><span class="arrow">→</span>
+      <span class="node">Netlify function (agent loop)</span><span class="arrow">→</span>
+      <span class="node">Steel cloud browser (CDP)</span><span class="arrow">→</span>
       <span class="node">Gemini Flash (vision)</span>
     </div>
   </header>
@@ -105,10 +105,10 @@
     <div class="card">
       <div class="icon">🤖</div>
       <h3>"I'm not a robot"</h3>
-      <p class="desc">Steel auto-solves a real reCAPTCHA v2 and Cloudflare Turnstile. Click Run, watch it breeze through the checkbox.</p>
+      <p class="desc"><code>sessions.create({ solveCaptcha: true })</code> — Steel auto-clears a real reCAPTCHA v2 and Cloudflare Turnstile. Live session streams in the viewer.</p>
       <div class="tags">
         <span class="tag feature">solveCaptcha</span>
-        <span class="tag">reCAPTCHA</span>
+        <span class="tag">reCAPTCHA v2</span>
         <span class="tag">Turnstile</span>
       </div>
       <a class="btn" href="/gauntlet-ui.html?recipe=captcha-only">Launch</a>
@@ -116,11 +116,12 @@
 
     <div class="card">
       <div class="icon">👁️</div>
-      <h3>Visual Challenge</h3>
-      <p class="desc">Gemini vision classifies an image grid ("select all dogs") and clicks the right tiles — agent intelligence beyond auto-solve.</p>
+      <h3>Vision Grid</h3>
+      <p class="desc">Gemini Flash classifies each tile of an image grid ("select all dogs") and clicks matches via DOM id — agent intelligence Steel's auto-solve doesn't provide.</p>
       <div class="tags">
         <span class="tag feature">Gemini vision</span>
-        <span class="tag">DOM actions</span>
+        <span class="tag">page.screenshot</span>
+        <span class="tag">DOM click</span>
       </div>
       <a class="btn" href="/gauntlet-ui.html?recipe=vision-only">Launch</a>
     </div>
@@ -128,11 +129,11 @@
     <div class="card">
       <div class="icon">🔄</div>
       <h3>Reliability Arc</h3>
-      <p class="desc">The agent hits a delayed render, a bot wall, and a mobile layout bug — diagnoses each failure and recovers.</p>
+      <p class="desc">Agent hits a 3s delayed render, a bot wall, and a mobile layout bug. Diagnoses each from screenshots + selectors, then recovers — <code>stealthConfig</code>, <code>useProxy</code>, alternate paths.</p>
       <div class="tags">
-        <span class="tag feature">diagnose</span>
-        <span class="tag feature">recover</span>
-        <span class="tag">stealth</span>
+        <span class="tag feature">diagnose + recover</span>
+        <span class="tag">useProxy</span>
+        <span class="tag">dimensions</span>
       </div>
       <a class="btn" href="/gauntlet-ui.html?recipe=reliability">Launch</a>
     </div>
@@ -140,10 +141,10 @@
     <div class="card">
       <div class="icon">🏁</div>
       <h3>Full Gauntlet</h3>
-      <p class="desc">Every route back-to-back: captcha, vision, bot wall, mobile bug — then a parallel fleet variance finale.</p>
+      <p class="desc">All routes back-to-back — captcha, vision grid, bot wall, mobile bug — then N concurrent Steel sessions each hitting a different failure, feeding a live variance dashboard.</p>
       <div class="tags">
-        <span class="tag feature">all features</span>
-        <span class="tag">fleet</span>
+        <span class="tag feature">all Steel features</span>
+        <span class="tag">fleet · parallel sessions</span>
       </div>
       <a class="btn" href="/gauntlet-ui.html">Launch</a>
     </div>

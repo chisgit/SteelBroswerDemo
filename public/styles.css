@@ -194,6 +194,97 @@ button.ghost {
 .tag.progress { background: rgba(147,160,194,0.15); color: var(--muted); }
 .tag.recovered { background: rgba(255,200,87,0.15); color: var(--warn); }
 
+/* Console panel — live Steel SDK call log (hero of right column) */
+.console-panel {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.console-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.72rem;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ok);
+  border-bottom: 1px solid var(--line);
+  background: #091018;
+}
+.console-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(61,220,151,0.6);
+  flex-shrink: 0;
+}
+.console-badge {
+  margin-left: auto;
+  background: rgba(91,140,255,0.15);
+  color: var(--accent);
+  border: 1px solid rgba(91,140,255,0.3);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+
+/* API log inside console panel */
+.api-log {
+  background: #06090f;
+  padding: 0.6rem 0.7rem;
+  max-height: 200px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  line-height: 1.65;
+}
+.log-line { white-space: pre-wrap; word-break: break-all; }
+.log-ts { color: #3a4460; margin-right: 0.5rem; }
+.log-method { color: #cfe0ff; font-weight: 600; margin-right: 0.3rem; }
+.log-params { color: #6b7fa8; margin-right: 0.3rem; }
+.log-status { }
+.log-ok { color: var(--ok); }
+.log-invoking { color: var(--accent); }
+.log-warn { color: var(--warn); }
+.log-detail { color: #555; }
+.log-line.muted { color: #2a3040; }
+
+/* Integration snippet panel */
+.snippet-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.9rem;
+}
+.snippet-header {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+.snippet-code {
+  background: #06090f;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--warn);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 0.5rem;
+  max-height: 130px;
+  overflow: auto;
+  line-height: 1.55;
+}
+.snippet-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 /* fleet dashboard */
 .dash { display: grid; gap: 0.5rem; }
 .dash .row { display: grid; grid-template-columns: 130px 1fr; gap: 0.6rem; align-items: center; font-size: 0.85rem; }
@@ -203,5 +294,5 @@ button.ghost {
 .bar .seg.recovered { background: var(--warn); }
 .bar .seg.fail { background: var(--bad); }
 
-/* hide elements not used in current layout */
-#recipe-picker, #legend, #snippet, .recipe-kicker, .recipe-summary, .tagline { display: none; }
+/* hide legacy elements not used in current layout */
+#recipe-picker, #legend, .recipe-kicker, .recipe-summary, .tagline { display: none; }
