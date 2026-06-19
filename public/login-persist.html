@@ -1,347 +1,94 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login Persistence Demo</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-
-    .container {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      padding: 40px;
-      max-width: 500px;
-      width: 100%;
-    }
-
-    h1 {
-      color: #333;
-      margin-bottom: 10px;
-      font-size: 28px;
-    }
-
-    .subtitle {
-      color: #666;
-      margin-bottom: 30px;
-      font-size: 14px;
-    }
-
-    /* Login State */
-    .login-form {
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    label {
-      font-weight: 500;
-      color: #333;
-      font-size: 14px;
-    }
-
-    input[type="email"],
-    input[type="password"] {
-      padding: 12px;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      font-size: 14px;
-      transition: all 0.3s;
-    }
-
-    input[type="email"]:focus,
-    input[type="password"]:focus {
-      outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-
-    button {
-      padding: 12px;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-
-    .btn-login {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      margin-top: 10px;
-    }
-
-    .btn-login:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-    }
-
-    .btn-login:active {
-      transform: translateY(0);
-    }
-
-    /* Logged In State */
-    .logged-in-state {
-      display: none;
-      text-align: center;
-    }
-
-    .logged-in-state.active {
-      display: block;
-    }
-
-    .success-icon {
-      font-size: 48px;
-      margin-bottom: 20px;
-    }
-
-    .logged-in-message {
-      margin-bottom: 30px;
-    }
-
-    .logged-in-message h2 {
-      color: #333;
-      font-size: 24px;
-      margin-bottom: 10px;
-    }
-
-    .user-email {
-      color: #667eea;
-      font-weight: 600;
-      font-size: 16px;
-      padding: 10px;
-      background: #f0f4ff;
-      border-radius: 6px;
-      margin-bottom: 20px;
-    }
-
-    .session-info {
-      background: #f9f9f9;
-      border: 1px solid #eee;
-      border-radius: 6px;
-      padding: 15px;
-      margin-bottom: 20px;
-      text-align: left;
-      font-size: 12px;
-    }
-
-    .session-info p {
-      margin: 8px 0;
-      color: #666;
-      font-family: 'Monaco', 'Menlo', monospace;
-      word-break: break-all;
-    }
-
-    .session-info strong {
-      color: #333;
-    }
-
-    .btn-logout {
-      background: #e74c3c;
-      color: white;
-      width: 100%;
-    }
-
-    .btn-logout:hover {
-      background: #c0392b;
-      transform: translateY(-2px);
-    }
-
-    .info-box {
-      background: #e3f2fd;
-      border-left: 4px solid #2196f3;
-      padding: 15px;
-      margin-top: 30px;
-      border-radius: 4px;
-      font-size: 13px;
-      color: #1565c0;
-    }
-
-    .info-box strong {
-      display: block;
-      margin-bottom: 8px;
-    }
-
-    .error {
-      background: #ffebee;
-      color: #c62828;
-      padding: 10px;
-      border-radius: 6px;
-      margin-bottom: 15px;
-      font-size: 13px;
-      display: none;
-    }
-
-    .error.show {
-      display: block;
-    }
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Browser Profile Persistence — Steel Demo Hub</title>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="container">
-    <!-- Login Form -->
-    <div class="login-form" id="loginForm">
-      <h1>Login Demo</h1>
-      <p class="subtitle">Browser state persists across Steel sessions</p>
+  <nav style="padding:0.5rem clamp(1rem,4vw,3rem);font-size:0.82rem;border-bottom:1px solid var(--line)">
+    <a href="/" style="color:var(--muted)">&larr; Demo Hub</a>
+  </nav>
 
-      <div class="error" id="errorMsg"></div>
-
-      <form id="form" onsubmit="handleLogin(event)">
-        <div class="form-group">
-          <label for="email">Email</label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            placeholder="demo@example.com"
-            required
-            value="demo@steel-demo.com"
-          />
-        </div>
-
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            placeholder="Any password"
-            required
-            value="password123"
-          />
-        </div>
-
-        <button type="submit" class="btn-login">Log In</button>
-      </form>
-
-      <div class="info-box">
-        <strong>Demo tip:</strong>
-        Try these credentials:
-        <div style="margin-top: 8px;">
-          Email: <code>demo@steel-demo.com</code><br />
-          Password: <code>password123</code>
-        </div>
-      </div>
-    </div>
-
-    <!-- Logged In State -->
-    <div class="logged-in-state" id="loggedInState">
-      <div class="success-icon">✅</div>
-      <div class="logged-in-message">
-        <h2>You're Logged In</h2>
-        <div class="user-email" id="displayEmail"></div>
-      </div>
-
-      <div class="session-info">
-        <p><strong>Current Session Info:</strong></p>
-        <p id="sessionData"></p>
-        <p style="margin-top: 12px; border-top: 1px solid #ddd; padding-top: 12px;">
-          <strong>How this works:</strong><br />
-          Your login state is saved in browser localStorage. When you close and restart
-          the Steel session with the same profileId, the browser profile persists and
-          localStorage comes back with it.
-        </p>
-      </div>
-
-      <button class="btn-logout" onclick="handleLogout()">Logout</button>
-
-      <div class="info-box" style="margin-top: 20px;">
-        <strong>Next step:</strong>
-        Close the Steel session, then restart it with the same profileId. Reload this page
-        and you'll still be logged in — proving state persistence.
-      </div>
-    </div>
+  <!-- top banner -->
+  <div class="banner" id="banner">
+    <span class="play">▶</span>
+    <span id="banner-title">Pre-warming a Steel session…</span>
+    <span class="feature" id="banner-feature"></span>
   </div>
 
-  <script>
-    const EMAIL_KEY = 'auth_user_email';
-    const LOGIN_TIME_KEY = 'auth_login_time';
+  <main class="demo-layout">
 
-    // Check if user is already logged in on page load
-    window.addEventListener('DOMContentLoaded', () => {
-      const savedEmail = localStorage.getItem(EMAIL_KEY);
-      if (savedEmail) {
-        showLoggedInState(savedEmail);
-      }
-    });
+    <!-- LEFT COLUMN: live browser viewer -->
+    <section class="demo-left">
+      <div class="viewer-wrap">
+        <div class="viewer-label">
+          <span class="dot live"></span> Live Steel Cloud Browser
+          <span class="session-id" id="session-id"></span>
+        </div>
+        <iframe class="viewer" id="viewer" title="Live Steel session"></iframe>
+      </div>
 
-    function handleLogin(event) {
-      event.preventDefault();
+      <!-- controls -->
+      <div class="controls">
+        <button class="run" id="run-btn" disabled>Run demo</button>
+      </div>
+    </section>
 
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
+    <!-- RIGHT COLUMN: live API console + code snippet + proof -->
+    <section class="demo-right">
 
-      // Simple validation
-      if (!email || !password) {
-        showError('Email and password are required');
-        return;
-      }
+      <!-- 1. Real-time Steel SDK console -->
+      <div class="console-panel" id="console-panel">
+        <div class="console-header">
+          <span class="console-dot"></span>
+          Steel SDK — live API calls
+          <span class="console-badge" id="call-count">0 calls</span>
+        </div>
+        <div class="api-log" id="api-log">
+          <div class="log-line muted">Waiting for session creation…</div>
+        </div>
+      </div>
 
-      // Save to localStorage (simulating successful auth)
-      localStorage.setItem(EMAIL_KEY, email);
-      localStorage.setItem(LOGIN_TIME_KEY, new Date().toISOString());
+      <!-- 2. Integration snippet -->
+      <div class="snippet-panel" id="snippet-panel">
+        <div class="snippet-header">Integration snippet</div>
+        <pre class="snippet-code" id="snippet-code">await client.sessions.create({});
+// profileId-enabled for persistence</pre>
+        <div class="snippet-desc" id="api-desc">Creating a cloud browser via the Steel Sessions API.</div>
+      </div>
 
-      // Show logged in state
-      showLoggedInState(email);
-    }
+      <!-- 3. What this proves -->
+      <div class="prove-panel" id="prove-panel">
+        <div class="prove-header">What this proves</div>
+        <div class="prove-body" id="prove-body">Steel keeps browser profile state (localStorage, cookies) across session restarts.</div>
+        <a class="prove-link" id="prove-link" href="#" target="_blank" rel="noopener">Steel docs ↗</a>
+      </div>
 
-    function showLoggedInState(email) {
-      document.getElementById('loginForm').style.display = 'none';
-      document.getElementById('loggedInState').classList.add('active');
-      document.getElementById('displayEmail').textContent = email;
+      <!-- 4. Session metadata -->
+      <div class="session-panel" id="session-panel">
+        <div class="session-header">Session</div>
+        <div class="session-row"><span class="slabel">ID</span><code class="sval" id="sval-id">—</code></div>
+        <div class="session-row"><span class="slabel">Status</span><span class="sval" id="sval-status">connecting…</span></div>
+        <div class="session-row"><span class="slabel">SDK</span><code class="sval">steel-sdk · sessions.create</code></div>
+      </div>
+    </section>
+  </main>
 
-      // Display session info
-      const loginTime = localStorage.getItem(LOGIN_TIME_KEY);
-      const timestamp = loginTime ? new Date(loginTime).toLocaleString() : 'Unknown';
-      document.getElementById('sessionData').innerHTML = `
-        Logged in as: <strong>${email}</strong><br />
-        Login time: <strong>${timestamp}</strong><br />
-        Storage type: <strong>localStorage (persists across sessions)</strong>
-      `;
-    }
+  <!-- evidence feed -->
+  <section class="evidence-section">
+    <h2>How it works</h2>
+    <div style="color: var(--muted); font-size: 0.9rem; line-height: 1.6;">
+      <p><strong>Step 1:</strong> Log in with any credentials (saved to localStorage)</p>
+      <p><strong>Step 2:</strong> Note the profileId from the session panel</p>
+      <p><strong>Step 3:</strong> Close the Steel session</p>
+      <p><strong>Step 4:</strong> Restart Steel with the same profileId</p>
+      <p><strong>Step 5:</strong> Reload this page — you'll still be logged in</p>
+      <p style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line);"><strong>Why?</strong> Steel persists the browser profile (heap, DOM, storage) across session boundaries when you provide a profileId.</p>
+    </div>
+  </section>
 
-    function handleLogout() {
-      if (
-        confirm(
-          'Logout? (In a real demo, you would close the Steel session and restart with the same profileId)'
-        )
-      ) {
-        localStorage.removeItem(EMAIL_KEY);
-        localStorage.removeItem(LOGIN_TIME_KEY);
-        document.getElementById('loggedInState').classList.remove('active');
-        document.getElementById('loginForm').style.display = 'block';
-        document.getElementById('form').reset();
-      }
-    }
-
-    function showError(msg) {
-      const errorEl = document.getElementById('errorMsg');
-      errorEl.textContent = msg;
-      errorEl.classList.add('show');
-      setTimeout(() => errorEl.classList.remove('show'), 4000);
-    }
-  </script>
+  <script src="/login-persist.js" type="module"></script>
 </body>
 </html>
