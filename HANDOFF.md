@@ -1,5 +1,5 @@
 # HANDOFF — Steel Demo Hub
-Updated: 2026-06-18 | Branch: `feat/steel-captcha-gauntlet` @ `9eb735a` (HEAD: `fdfe246` on feature branch, merged)
+Updated: 2026-06-18 21:45 | Branch: `feat/steel-captcha-gauntlet` @ `33c9729`
 
 ## Workspace
 - Path: `c:\Users\User\SteelBroswerDemo`
@@ -27,11 +27,12 @@ npx netlify deploy --prod
 | Session create fn | [netlify/functions/session-create.mjs](netlify/functions/session-create.mjs) |
 | API call logger | [netlify/functions/lib/logger.mjs](netlify/functions/lib/logger.mjs) |
 | NVIDIA classifier | [netlify/functions/lib/nvidia.mjs](netlify/functions/lib/nvidia.mjs) |
+| Gemini classifier | [netlify/functions/lib/gemini.mjs](netlify/functions/lib/gemini.mjs) |
 
 ## Active branches
 | Branch | Plan doc | Status | Priority |
 |--------|----------|--------|----------|
-| `feat/steel-captcha-gauntlet` | [docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md](docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md) | 🔄 demo restructure merged (PR #1) | 1 — smoke test + demo rehearsal |
+| `feat/steel-captcha-gauntlet` | [docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md](docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md) | ✅ PR #1 merged, changes live | 1 — smoke test + demo rehearsal |
 
 ## What's done
 - Full gauntlet: 6 routes implemented (hCaptcha, vision-grid, bot-wall, mobile-bug, recaptcha/turnstile skipped on hobby)
@@ -41,12 +42,16 @@ npx netlify deploy --prod
 - `popLog()` wired into `agent-step.mjs` + `session-create.mjs` — SDK calls reach client
 - Hub (`index.html`) sharpened: actual Steel API methods in hero copy + card descriptions
 - Deployed live: https://steeldemo.netlify.app
+- Gemini API timeout: 8s `Promise.race` guard in `lib/gemini.mjs` prevents hanging on slow API calls
+- SDK cleanup: removed invalid `stealthConfig` param; session creation only passes valid Steel SDK params (`solveCaptcha`, `useProxy`, `blockAds`, `dimensions`, `userAgent`, `region`)
+- `.claude/skills/steel-developer` symlink restored to `.agents/` after filter-repo scrub
+- Git history scrubbed of committed API keys (GEMINI_API_KEY, STEEL_API_KEY) via `git-filter-repo`
 
 ## What's next
 1. **Smoke test live** — open https://steeldemo.netlify.app → run Simple Impact + Vision Only → verify API console shows real SDK calls streaming in
 2. **Demo rehearsal** — run Full Gauntlet end to end; check timing, evidence cards, fleet variance
 3. **Merge to main** when ready for final demo URL (currently working on `feat/steel-captcha-gauntlet`)
-4. **PR #1 merged** (squash-merge, branch deleted) — covered: API console, NVIDIA classifier, logger infra, SDK cleanup, skill symlink restore
+4. **Sync.agents/ update** — if skill content in `.agents/skills/steel-developer/` drifts from `.claude/`, update both paths (they share by symlink)
 
 ## Workflow rules
 - Commit per feature cluster; conventional style
