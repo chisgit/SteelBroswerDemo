@@ -55,14 +55,14 @@ export const FLOWS = {
     docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
     path: "/gauntlet/mobile-bug.html",
   },
-  "math-arcade": {
-    title: "Math Arcade — persistent cloud session",
-    feature: "session persistence",
-    proves: "Steel keeps JS heap alive after agent disconnects — re-attach resumes exactly where you left off.",
-    apiSnippet: `// disconnect without releasing\nawait browser.close();\n// ... other work ...\n// reconnect same session\nawait chromium.connectOverCDP(websocketUrl);`,
-    docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
-    path: null,
-  },
+   "math-arcade": {
+     title: "Math Arcade — persistent cloud session",
+     feature: "session persistence",
+     proves: "Steel keeps JS heap alive — score, matched cards, and face-up card state persist after disconnect/reconnect.",
+     apiSnippet: `// disconnect without releasing\nawait browser.close();\n// ... other work ...\n// reconnect same session\nawait chromium.connectOverCDP(websocketUrl);`,
+     docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
+     path: null,
+   },
   "stock-predictor": {
     title: "Stock Predictor — scrape + screenshot",
     feature: "scrape + screenshot",
