@@ -1,5 +1,5 @@
 # HANDOFF — Steel Demo Hub
-Updated: 2026-06-18 | Branch: `feat/steel-captcha-gauntlet` @ `9eb735a`
+Updated: 2026-06-18 | Branch: `feat/steel-captcha-gauntlet` @ `9eb735a` (HEAD: `fdfe246` on feature branch, merged)
 
 ## Workspace
 - Path: `c:\Users\User\SteelBroswerDemo`
@@ -45,14 +45,29 @@ npx netlify deploy --prod
 ## What's next
 1. **Smoke test live** — open https://steeldemo.netlify.app → run Simple Impact + Vision Only → verify API console shows real SDK calls streaming in
 2. **Demo rehearsal** — run Full Gauntlet end to end; check timing, evidence cards, fleet variance
-3. **Unstaged files** — `.claude/skills/steel-developer` and `netlify/functions/lib/steel.mjs` have local changes; review before demo
-4. **Merge to main** when ready for final demo URL
+3. **Merge to main** when ready for final demo URL (currently working on `feat/steel-captcha-gauntlet`)
+4. **PR #1 merged** (squash-merge, branch deleted) — covered: API console, NVIDIA classifier, logger infra, SDK cleanup, skill symlink restore
 
 ## Workflow rules
 - Commit per feature cluster; conventional style
 - Stay on `feat/steel-captcha-gauntlet`
 - Verification: manual browser test (no unit test suite — demoware)
 - Deploy: `npx netlify deploy --prod` from project root
+
+## Skill file management
+- `.claude/skills/steel-developer` is a **symlink** → `.agents/skills/steel-developer/`
+- Both paths point to the same skill files under `.agents/`
+- Committing the symlink instead of the directory keeps git tracking clean
+- The symlink was dropped in commit `604c160` (skill move to `.agents/`) and restored in the merged PR #1 range (`b76beb1`)
+- The `.claude/` dir on disk may show as untracked after filter-repo; `git add .claude/skills/steel-developer` re-stages the symlink
+
+## Git history note — secret scrub
+- A GCP API key (`GEMINI_API_KEY`) and Steel API key (`STEEL_API_KEY`) were committed in old commits (HANDOFF.md, test_steel_session.py)
+- Run `git-filter-repo` to scrub them: `python3 git-filter-repo --force --replace-text <replacement-file>` using `==>` separator for each secret → replacement pair
+- After filter-repo: `origin` remote is removed; re-add with `git remote add origin <url>`
+- All branches must be force-pushed after the scrub; every commit hash changes
+- The scrub was done on 2026-06-18; both `feat/steel-captcha-gauntlet` and `feat/demo-restructure-api-console` were force-pushed
+- **Do not push the old SHAs** — the secrets are in those commits
 
 ## Locked decisions
 - Front-end-drives-loop (KTD1): each `/agent-step` is one atomic ≤10s cycle; UI loops until done
