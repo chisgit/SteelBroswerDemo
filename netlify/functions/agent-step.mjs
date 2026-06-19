@@ -705,15 +705,15 @@ async function stockPredictorStep(page, phase) {
     await page.mouse.click(clickX, clickY);
     record("stockPredictor.predict", { phase: "click-predict", x: clickX, y: clickY }, "ok", "Predict button clicked");
 
-    // Step 4: Wait for prediction to render
-    await page.waitForTimeout(4000);
+    // Step 4: Wait for prediction to render (Streamlit can take 30-60s on free tier)
+    await page.waitForTimeout(35000);
 
     return {
       done: false,
       phase: "extract",
       step: "predict",
       action: 'Filled ticker "AAPL" → NVIDIA found Predict button → clicked → waiting for prediction',
-      detail: `NVIDIA located Predict button at ${element.x_percent}%, ${element.y_percent}% (confidence: ${element.confidence}%). Clicked and waiting for results.`,
+      detail: `NVIDIA located Predict button at ${element.x_percent}%, ${element.y_percent}% (confidence: ${element.confidence}%). Clicked and waiting 35s for results.`,
       evidence: card({
         action: 'fill ticker "AAPL" → NVIDIA vision click Predict',
         targetSelector: "button",
@@ -726,8 +726,8 @@ async function stockPredictorStep(page, phase) {
   }
 
   if (phase === "extract") {
-    record("stockPredictor.extract", { phase: "wait-for-render" }, "invoking", "Waiting 3s for prediction to fully render");
-    await page.waitForTimeout(3000);
+    record("stockPredictor.extract", { phase: "wait-for-render" }, "invoking", "Waiting 10s for prediction to fully render");
+    await page.waitForTimeout(10000);
     
     record("stockPredictor.extract", { phase: "screenshot" }, "invoking", "Capturing full-page screenshot");
     const shot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: true });
