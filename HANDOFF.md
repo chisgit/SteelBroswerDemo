@@ -48,7 +48,7 @@ npx netlify deploy --prod
 - Git history scrubbed of committed API keys (GEMINI_API_KEY, STEEL_API_KEY) via `git-filter-repo`
 
 ## What's next
-1. **Smoke test live** — open https://steeldemo.netlify.app → run Simple Impact + Vision Only → verify API console shows real SDK calls streaming in
+1. ~~**Smoke test live** — open https://steeldemo.netlify.app → run Simple Impact + Vision Only → verify API console shows real SDK calls streaming in~~ ✅ **Done (2026-06-18) — both tests passed. API console shows real sessions.create + connectOverCDP calls; evidence log populates; demo completes.**
 2. **Demo rehearsal** — run Full Gauntlet end to end; check timing, evidence cards, fleet variance
 3. **Merge to main** when ready for final demo URL (currently working on `feat/steel-captcha-gauntlet`)
 4. **Sync.agents/ update** — if skill content in `.agents/skills/steel-developer/` drifts from `.claude/`, update both paths (they share by symlink)
