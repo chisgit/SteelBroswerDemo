@@ -40,39 +40,46 @@
       </div>
     </section>
 
-    <!-- RIGHT COLUMN: API call info + what this proves -->
+    <!-- RIGHT COLUMN: live API console + code snippet + proof -->
     <section class="demo-right">
-      <div class="api-panel" id="api-panel">
-        <div class="api-header">Steel API Call</div>
-        <div class="api-method" id="api-method">sessions.create()</div>
-        <pre class="api-params" id="api-params">{ "solveCaptcha": true }</pre>
-        <div class="api-desc" id="api-desc">Creating a cloud browser via Steel's Sessions API.</div>
+
+      <!-- 1. Real-time Steel SDK console — hero of the right column -->
+      <div class="console-panel" id="console-panel">
+        <div class="console-header">
+          <span class="console-dot"></span>
+          Steel SDK — live API calls
+          <span class="console-badge" id="call-count">0 calls</span>
+        </div>
+        <div class="api-log" id="api-log">
+          <div class="log-line muted">Waiting for session creation…</div>
+        </div>
       </div>
 
+      <!-- 2. Integration snippet — the actual code running this route -->
+      <div class="snippet-panel" id="snippet-panel">
+        <div class="snippet-header">Integration snippet</div>
+        <pre class="snippet-code" id="snippet-code">await client.sessions.create({ /* pre-warming… */ });</pre>
+        <div class="snippet-desc" id="api-desc">Creating a cloud browser via the Steel Sessions API.</div>
+      </div>
+
+      <!-- 3. What this proves + docs link -->
       <div class="prove-panel" id="prove-panel">
         <div class="prove-header">What this proves</div>
         <div class="prove-body" id="prove-body">Steel creates a real cloud browser session on demand.</div>
         <a class="prove-link" id="prove-link" href="#" target="_blank" rel="noopener">Steel docs ↗</a>
       </div>
 
+      <!-- 4. Session metadata -->
       <div class="session-panel" id="session-panel">
         <div class="session-header">Session</div>
         <div class="session-row"><span class="slabel">ID</span><code class="sval" id="sval-id">—</code></div>
         <div class="session-row"><span class="slabel">Status</span><span class="sval" id="sval-status">connecting…</span></div>
-        <div class="session-row"><span class="slabel">Steel SDK</span><code class="sval">steel-sdk (sessions.create)</code></div>
+        <div class="session-row"><span class="slabel">SDK</span><code class="sval">steel-sdk · sessions.create</code></div>
       </div>
     </section>
   </main>
 
-  <!-- API call log (real-time console) -->
-  <section class="evidence-section">
-    <h2>API Call Log <span style="font-weight:400;color:var(--muted)">— live from Steel SDK</span></h2>
-    <div class="api-log" id="api-log">
-      <div class="log-line muted">Waiting for API calls…</div>
-    </div>
-  </section>
-
-  <!-- evidence feed at bottom -->
+  <!-- evidence feed -->
   <section class="evidence-section">
     <h2>Agent Evidence Log</h2>
     <div class="evidence" id="evidence"></div>

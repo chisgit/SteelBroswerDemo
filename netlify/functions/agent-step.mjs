@@ -6,6 +6,7 @@ import { flowMeta } from "./lib/flows.mjs";
 import { classifyTiles } from "./lib/gemini.mjs";
 import { classifyTilesNVIDIA } from "./lib/nvidia.mjs";
 import { card, thumb } from "./lib/evidence.mjs";
+import { popLog } from "./lib/logger.mjs";
 
 const BASE = process.env.GAUNTLET_BASE_URL || "";
 
@@ -29,11 +30,13 @@ export const handler = async (event) => {
       feature: meta.feature,
       proves: meta.proves,
       apiSnippet: meta.apiSnippet,
+      docsUrl: meta.docsUrl,
+      apiLog: popLog(),
       ...result,
     });
   } catch (err) {
     console.error(`[step] ERROR ${route}:`, err.message);
-    return json(502, { error: "agent_step_failed", detail: err.message, done: true, outcome: "fail" });
+    return json(502, { error: "agent_step_failed", detail: err.message, done: true, outcome: "fail", apiLog: popLog() });
   } finally {
     if (conn?.browser) await conn.browser.close().catch(() => {});
   }

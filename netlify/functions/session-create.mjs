@@ -1,6 +1,7 @@
 // Pre-warm a Steel session on page load (KTD3) so cold-start doesn't eat the
 // per-step 10s budget. Returns only the client-safe view (KTD2 / R10).
 import { createSession, clientView } from "./lib/steel.mjs";
+import { popLog } from "./lib/logger.mjs";
 
 export const handler = async (event) => {
   try {
@@ -13,7 +14,7 @@ export const handler = async (event) => {
       blockAds: Boolean(body.blockAds),
       dimensions: body.dimensions,
     });
-    return json(200, clientView(session));
+    return json(200, { ...clientView(session), apiLog: popLog() });
   } catch (err) {
     console.error("[session-create] Error:", err.message);
     return json(err.message.includes("STEEL_API_KEY") ? 500 : 502, {

@@ -46,20 +46,24 @@ function renderRecipe(recipe) {
 
 async function prewarm() {
   setBanner("Pre-warming a Steel session…", "sessions.create");
-  setApiCall("sessions.create", '{ /* hobby tier: no solveCaptcha */ }', "Creating a cloud browser via Steel's Sessions API.");
+  setSnippet('await client.sessions.create({});', "Creating a Steel cloud browser session.");
   setProve("Steel creates a real cloud browser session on demand.", "");
   session = await api("session-create", {});
   if (session.error) {
     setBanner("Steel session failed — check API key", "");
-    setApiCall("sessions.create", '{ }', "Error: " + session.detail);
+    setSnippet('// sessions.create failed', "Error: " + session.detail);
     return false;
   }
+  if (session.apiLog) session.apiLog.forEach(addLog);
   $("viewer").src = session.debugUrl + "?interactive=false&showControls=true";
   $("sval-id").textContent = session.sessionId || "—";
   $("sval-status").textContent = "connected";
   $("sval-status").className = "sval ok";
   setBanner("Ready — click Run demo", "session ready");
-  setApiCall("sessions.create", '{ id: "' + (session.sessionId || "").slice(0, 8) + '…" }', "Session created. Cloud browser is live.");
+  setSnippet(
+    `await client.sessions.create({});\n// sessionId: "${(session.sessionId || "").slice(0, 8)}…"`,
+    "Session live. Steel cloud browser ready."
+  );
   return true;
 }
 
@@ -70,7 +74,7 @@ async function runGauntlet() {
     setActiveChip(route);
     const meta = FLOWS[route];
     setBanner(meta.title, meta.feature);
-    setApiCall("—", "{ awaiting step… }", meta.proves);
+    setSnippet(meta.apiSnippet || "// loading…", meta.proves);
     setProve(meta.proves, meta.docsUrl);
     const outcome = await runRoute(route);
     setChipOutcome(route, outcome);
@@ -90,7 +94,7 @@ async function runRoute(route) {
       phase,
     });
     if (res.flowTitle) setBanner(res.flowTitle, res.feature);
-    if (res.apiCall) setApiCall(res.apiCall.method, JSON.stringify(res.apiCall.params, null, 2), res.apiCall.description);
+    if (res.apiSnippet) setSnippet(res.apiSnippet, res.apiCall?.description || "");
     if (res.proves) setProve(res.proves, res.docsUrl);
     if (res.apiLog) res.apiLog.forEach(addLog);
     if (res.evidence) addEvidence(res.evidence);
@@ -124,9 +128,15 @@ function setBanner(title, feature) {
 }
 
 function setApiCall(method, params, description) {
-  $("api-method").textContent = method || "—";
-  $("api-params").textContent = params || "—";
-  $("api-desc").textContent = description || "";
+  // legacy shim — kept for callers that still pass raw method/params
+  $("api-desc") && ($("api-desc").textContent = description || "");
+}
+
+function setSnippet(snippet, description) {
+  const el = $("snippet-code");
+  if (el) el.textContent = snippet || "";
+  const desc = $("api-desc");
+  if (desc) desc.textContent = description || "";
 }
 
 function setProve(body, docsUrl) {
@@ -173,19 +183,31 @@ function setChipOutcome(route, outcome) {
   if (c) { c.classList.remove("active"); c.classList.add(outcome); }
 }
 
+let _callCount = 0;
+
 function addLog(entry) {
   const el = $("api-log");
   if (!el) return;
+  // remove placeholder
+  const placeholder = el.querySelector(".muted");
+  if (placeholder) placeholder.remove();
+
   const row = document.createElement("div");
   row.className = "log-line";
   const ts = (entry.ts || "").slice(11, 19);
-  const params = typeof entry.params === "object" ? JSON.stringify(entry.params) : (entry.params || "");
-  row.innerHTML = `<span class="log-ts">${esc(ts)}</span> <span class="log-method">${esc(entry.method)}</span> <span class="log-status ${entry.status === 'ok' || entry.status === 'connected' || entry.status === 'found — captcha solved' ? 'log-ok' : 'log-warn'}">${esc(entry.status)}</span>${entry.detail ? ` <span class="log-detail">${esc(entry.detail)}</span>` : ""}`;
+  const isOk = ["ok", "connected", "found — captcha solved"].includes(entry.status);
+  const statusClass = isOk ? "log-ok" : entry.status === "invoking" ? "log-invoking" : "log-warn";
+  const params = entry.params && Object.keys(entry.params).length
+    ? ` <span class="log-params">${esc(JSON.stringify(entry.params))}</span>`
+    : "";
+  row.innerHTML = `<span class="log-ts">${esc(ts)}</span> <span class="log-method">${esc(entry.method)}</span>${params} <span class="log-status ${statusClass}">${esc(entry.status)}</span>${entry.detail ? ` <span class="log-detail">${esc(entry.detail)}</span>` : ""}`;
   el.appendChild(row);
   el.scrollTop = el.scrollHeight;
-  // remove initial placeholder
-  const placeholder = el.querySelector(".muted");
-  if (placeholder) placeholder.remove();
+
+  // update badge
+  _callCount++;
+  const badge = $("call-count");
+  if (badge) badge.textContent = `${_callCount} call${_callCount === 1 ? "" : "s"}`;
 }
 
 function clearEvidence() { $("evidence").innerHTML = ""; }
