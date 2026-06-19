@@ -1,5 +1,5 @@
 # HANDOFF — Steel Demo Hub
-Updated: 2026-06-18 21:45 | Branch: `feat/steel-captcha-gauntlet` @ `23dc7d5`
+Updated: 2026-06-18 23:30 | Branch: `main` @ `eda79cc`
 
 ## Workspace
 - Path: `c:\Users\User\SteelBroswerDemo`
@@ -32,7 +32,10 @@ npx netlify deploy --prod
 ## Active branches
 | Branch | Plan doc | Status | Priority |
 |--------|----------|--------|----------|
-| `feat/steel-captcha-gauntlet` | [docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md](docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md) | ✅ PR #1 merged, changes live | 1 — smoke test + demo rehearsal |
+| `main` | — | ✅ Core demo live at steeldemo.netlify.app | — |
+| `feat/stockpredictor-demo` | [docs/plans/2026-06-18-013-feat-stockpredictor-demo-plan.md](docs/plans/2026-06-18-013-feat-stockpredictor-demo-plan.md) | 🔨 Draft plan written, not started | 1 — build next |
+| `feat/steel-captcha-gauntlet` | [docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md](docs/plans/2026-06-18-001-feat-steel-captcha-gauntlet-plan.md) | ✅ PR #1 merged into `main` | — |
+| `feat/persistent-session-math-arcade` | [docs/plans/2026-06-18-012-feat-persistent-session-math-arcade-plan.md](docs/plans/2026-06-18-012-feat-persistent-session-math-arcade-plan.md) | ✅ Merged into `main` | — |
 
 ## What's done
 - Full gauntlet: 6 routes implemented (hCaptcha, vision-grid, bot-wall, mobile-bug, recaptcha/turnstile skipped on hobby)
@@ -46,16 +49,24 @@ npx netlify deploy --prod
 - SDK cleanup: removed invalid `stealthConfig` param; session creation only passes valid Steel SDK params (`solveCaptcha`, `useProxy`, `blockAds`, `dimensions`, `userAgent`, `region`)
 - `.claude/skills/steel-developer` symlink restored to `.agents/` after filter-repo scrub
 - Git history scrubbed of committed API keys (GEMINI_API_KEY, STEEL_API_KEY) via `git-filter-repo`
+- Smoke test: Simple Impact + Vision Grid both pass; API console shows real `sessions.create` + `chromium.connectOverCDP` calls
+- Persistent cloud session demo (math-arcade): 5-phase lifecycle shipped — `session-resume.mjs`, `mathArcadeStep` handler, recipe
+- `main` branch created; `feat/steel-captcha-gauntlet` + `feat/persistent-session-math-arcade` merged in
 
 ## What's next
-1. ~~**Smoke test live** — open https://steeldemo.netlify.app → run Simple Impact + Vision Only → verify API console shows real SDK calls streaming in~~ ✅ **Done (2026-06-18) — both tests passed. API console shows real sessions.create + connectOverCDP calls; evidence log populates; demo completes.**
-2. **Demo rehearsal** — run Full Gauntlet end to end; check timing, evidence cards, fleet variance
-3. **Merge to main** when ready for final demo URL (currently working on `feat/steel-captcha-gauntlet`)
-4. **Sync.agents/ update** — if skill content in `.agents/skills/steel-developer/` drifts from `.claude/`, update both paths (they share by symlink)
+1. ~~**Smoke test live** — open https://steeldemo.netlify.app → run Simple Impact + Vision Only → verify API console shows real SDK calls streaming in~~ ✅ **Done (2026-06-18)**
+2. ~~**Merge to main**~~ ✅ **Done (2026-06-18) — `main` created from `feat/steel-captcha-gauntlet` + `feat/persistent-session-math-arcade` merged**
+3. **Build Stock Predictor demo** — implement [plan 013](docs/plans/2026-06-18-013-feat-stockpredictor-demo-plan.md) on `feat/stockpredictor-demo`:
+   - U1: CDP WebSocket URL display in API console
+   - U2: flows.mjs route + recipe entry
+   - U3: agent-step.mjs stockPredictorStep handler (5-phase lifecycle)
+   - U4: Front-end side-by-side screenshot vs scraped-text comparison
+4. **Demo rehearsal** — run Full Gauntlet end to end; check timing, evidence cards, fleet variance
+5. **Sync.agents/ update** — if skill content in `.agents/skills/steel-developer/` drifts from `.claude/`, update both paths
 
 ## Workflow rules
 - Commit per feature cluster; conventional style
-- Stay on `feat/steel-captcha-gauntlet`
+- Feature work on `feat/<name>` branches; `main` is stable demo
 - Verification: manual browser test (no unit test suite — demoware)
 - Deploy: `npx netlify deploy --prod` from project root
 
