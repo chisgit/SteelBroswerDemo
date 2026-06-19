@@ -4,7 +4,7 @@
 import { createSession, connect, release, relaunchWithProxy, clientView } from "./lib/steel.mjs";
 import { flowMeta } from "./lib/flows.mjs";
 import { classifyTiles } from "./lib/gemini.mjs";
-import { findElementNVIDIA } from "./lib/nvidia.mjs";
+import { classifyTilesNVIDIA } from "./lib/nvidia.mjs";
 import { card, thumb } from "./lib/evidence.mjs";
 import { popLog, record } from "./lib/logger.mjs";
 
@@ -16,15 +16,25 @@ export const handler = async (event) => {
   try {
     const parsed = JSON.parse(event.body || "{}");
     route = parsed.route || "unknown";
-    const { sessionId, websocketUrl, phase = "start", baseUrl, savedScore, selectedCards } = parsed;
+    const { sessionId, websocketUrl, phase = "start", baseUrl, savedScore, matchedPair, faceUpIndex } = parsed;
     const meta = flowMeta(route);
     const base = baseUrl || BASE || originFrom(event);
 
     console.log(`[step] ${route}/${phase}`);
-    conn = await connect(websocketUrl, sessionId, `chromium.connectOverCDP (${phase})`);
+
+    // math-arcade phases manage their own CDP lifecycle:
+    // - other-work uses plain fetch, no Steel session needed
+    // - resume/finish reconnect themselves with a fresh connect()
+    // - detach and start need the shared connect() normally
+    const skipConnect = route === "math-arcade" && ["other-work", "resume", "finish"].includes(phase);
+    if (!skipConnect) {
+      conn = await connect(websocketUrl, sessionId, `chromium.connectOverCDP (${phase})`);
+    } else {
+      conn = { browser: null, context: null, page: null, _closed: true };
+    }
     const { page } = conn;
 
-    const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, selectedCards });
+    const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, matchedPair, faceUpIndex });
     return json(200, {
       flowTitle: meta.title,
       feature: meta.feature,
@@ -44,7 +54,7 @@ export const handler = async (event) => {
 
 // --- per-route step logic -------------------------------------------------
 
-async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, selectedCards }) {
+async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore, matchedPair, faceUpIndex }) {
   switch (route) {
     case "recaptcha":
     case "turnstile":
@@ -58,7 +68,7 @@ async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl
     case "mobile-bug":
       return mobileBugStep(page, base, phase, meta);
     case "math-arcade":
-      return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, selectedCards);
+      return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, matchedPair, faceUpIndex);
     case "stock-predictor":
       return stockPredictorStep(page, phase);
     default:
@@ -317,111 +327,75 @@ async function mobileBugStep(page, base, phase, meta) {
 // Math Arcade persistent-session demo: 5-phase lifecycle proves Steel JS heap survives CDP disconnect.
 // Phase:  start → detach → other-work → resume → finish
 //
-// Core proof: flip some cards, read score, disconnect (no release), open a NEW tab in the same Steel session,
-// browse elsewhere, then re-attach the ORIGINAL session and read score
+// Core proof: flip some cards, read score, disconnect (no release), open a NEW Steel session and
+// search the web ("match card game strategies"), then re-attach the ORIGINAL session and read score
 // again — score unchanged proves JS heap survived the disconnect.
-async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, selectedCards = []) {
+async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, matchedPair, faceUpIndex) {
   const ARCADE_URL = "https://matharcadewrecker.netlify.app";
 
-if (phase === "start") {
-     // Navigate and start the Math Match game
-     await page.goto(ARCADE_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
-     await page.waitForTimeout(5000);
-     await page.evaluate(() => app.loadGame("match"));
-     await page.waitForFunction(() => typeof matchGame !== "undefined", { timeout: 8000 });
-     await page.waitForSelector("#match-grid .card", { timeout: 8000 });
+  if (phase === "start") {
+    // Navigate and start the Math Match game
+    await page.goto(ARCADE_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(5000);
+    await page.evaluate(() => app.loadGame("match"));
+    await page.waitForFunction(() => typeof matchGame !== "undefined", { timeout: 8000 });
+    await page.waitForSelector("#match-grid .card", { timeout: 8000 });
 
-     // Get initial state
-     const initialMatched = await page.evaluate(() => matchGame.matched).catch(() => 0);
-     const totalCards = await page.evaluate(() => matchGame.cards.length).catch(() => 16);
-     
-     // Try to find a match by flipping pairs
-     const triedPairs = new Set();
-     let matchFound = false;
-     let matchedPair = null;
-     const maxAttempts = Math.ceil(totalCards / 2); // Reasonable upper bound
-     
-     for (let attempt = 0; attempt < maxAttempts && !matchFound; attempt++) {
-       // Get a random pair of unmatched cards we haven't tried yet
-       const pair = await chooseRandomCardPair(page, triedPairs);
-       if (!pair) break; // No more available pairs
-       
-       triedPairs.add(pair.join(","));
-       
-       // Flip both cards
-       await page.evaluate((idx) => {
-         document.querySelectorAll("#match-grid .card")[idx]?.click();
-       }, pair[0]);
-       await page.waitForTimeout(400);
-       await page.evaluate((idx) => {
-         document.querySelectorAll("#match-grid .card")[idx]?.click();
-       }, pair[1]);
-       await page.waitForTimeout(800); // Wait for game to process
-       
-       // Check if we got a match
-       const newMatched = await page.evaluate(() => matchGame.matched).catch(() => 0);
-       if (newMatched > initialMatched) {
-         matchFound = true;
-         matchedPair = pair;
-         // Update initialMatched for subsequent checks if needed, but we break anyway
-       }
-       // If not matched, cards should have flipped back automatically
-     }
-     
-     // If we found a match, flip one additional card face-up
-     let faceUpIndex = null;
-     let selectedCardsForCarry = [];
-     if (matchFound && matchedPair) {
-       // Get one random unmatched card (not part of our matched pair)
-       const seenCards = new Set(matchedPair); // Treat matched pair as seen/used
-       faceUpIndex = await clickRandomUnmatchedCard(page, seenCards);
-       // Note: clickRandomUnmatchedCard flips the card face-up and returns its index
-       selectedCardsForCarry = [...matchedPair, faceUpIndex].filter(idx => idx !== null);
-     } else {
-       // Fallback: original behavior - flip 4 random cards
-       const seenCards = new Set();
-       for (let i = 0; i < 4; i++) {
-         const picked = await clickRandomUnmatchedCard(page, seenCards);
-         if (picked !== null) seenCards.add(picked);
-         await page.waitForTimeout(400);
-       }
-       selectedCardsForCarry = Array.from(seenCards);
-     }
-     
-     await page.waitForTimeout(500);
-     
-     const score = await page.evaluate(() => matchGame.score).catch(() => 0);
-     const shot = await thumb(page);
-     
-     // Prepare return object
-     const returnObj = {
-       done: false,
-       phase: "detach",
-       savedScore: score,
-       selectedCards: selectedCardsForCarry,
-       evidence: card({
-         action: matchFound && matchedPair 
-           ? `navigate → find match (${matchedPair[0]},${matchedPair[1]}) → flip additional card ${faceUpIndex || 'none'}`
-           : "navigate matharcadewrecker.netlify.app → app.loadGame('match') → flip 4 cards (fallback)",
-         targetSelector: "#match-grid .card",
-         verdict: matchFound && matchedPair
-           ? `match found! score: ${score}, matched pair: [${matchedPair[0]},${matchedPair[1]}], face-up: ${faceUpIndex || 'none'}`
-           : `game in progress — score: ${score}`,
-         outcome: "pass",
-         screenshotThumb: shot,
-       }),
-     };
-     
-     // Add match-specific state if found
-     if (matchFound && matchedPair) {
-       returnObj.matchedPair = matchedPair;
-       if (faceUpIndex !== null) {
-         returnObj.faceUpIndex = faceUpIndex;
-       }
-     }
-     
-     return returnObj;
-   }
+    const chosen = await page.evaluate(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const cards = Array.from(matchGame.cards || []);
+      const groups = new Map();
+      for (const card of cards) {
+        const group = groups.get(card.id) || [];
+        group.push(card.index);
+        groups.set(card.id, group);
+      }
+      const pairs = Array.from(groups.values()).filter((group) => group.length >= 2);
+      const pair = pairs[Math.floor(Math.random() * pairs.length)]?.slice(0, 2) || [0, 1];
+      const els = () => document.querySelectorAll("#match-grid .card");
+
+      els()[pair[0]]?.click();
+      await sleep(350);
+      els()[pair[1]]?.click();
+      await sleep(900);
+
+      const remaining = cards
+        .map((card) => card.index)
+        .filter((index) => !pair.includes(index) && !els()[index]?.classList.contains("matched"));
+      const faceUp = remaining[Math.floor(Math.random() * remaining.length)] ?? null;
+      if (faceUp !== null) {
+        els()[faceUp]?.click();
+        await sleep(350);
+      }
+
+      return {
+        matchedPair: pair,
+        faceUpIndex: faceUp,
+        score: matchGame.score,
+        matched: matchGame.matched,
+      };
+    });
+
+    const score = chosen?.score ?? null;
+    if (score === null) {
+      return { done: true, outcome: "fail", evidence: card({ action: "read matchGame.score", verdict: "evaluate failed — game may not have loaded", outcome: "fail" }) };
+    }
+    const shot = await thumb(page);
+    return {
+      done: false,
+      phase: "detach",
+      savedScore: score,
+      matchedPair: chosen.matchedPair,
+      faceUpIndex: chosen.faceUpIndex,
+      evidence: card({
+        action: "wait 5s → app.loadGame('match') → flip a random matching pair → leave one random card face-up",
+        targetSelector: "#match-grid .card",
+        verdict: `random match: [${chosen.matchedPair.join(", ")}], face-up card: ${chosen.faceUpIndex ?? "none"}, score: ${score}`,
+        outcome: "pass",
+        screenshotThumb: shot,
+      }),
+    };
+  }
 
   if (phase === "detach") {
     // browser.close() = CDP disconnect ONLY — Steel session stays alive in cloud with full JS heap
@@ -432,6 +406,8 @@ if (phase === "start") {
       done: false,
       phase: "other-work",
       savedScore,
+      matchedPair,
+      faceUpIndex,
       evidence: card({
         action: "browser.close() — CDP disconnect only, no sessions.release()",
         targetSelector: "n/a",
@@ -444,41 +420,35 @@ if (phase === "start") {
   if (phase === "other-work") {
     // Agent does independent work WITHOUT touching the Steel session at all.
     // Game session sits dormant in Steel cloud — no CDP client attached, heap fully preserved.
-    // We jump to a new tab, browse elsewhere, then close that tab and come back.
-    const sideQuest = await conn.context.newPage().catch(() => null);
-    record("agent (no Steel session)", { task: "browse elsewhere: Wikipedia Card_game" }, "invoking");
+    // We fetch Wikipedia from the serverless function directly — no Steel browser needed.
+    // After a 3s pause, we re-attach to prove the session outlived the gap.
+    // (conn.browser is null here — we skipped connect() for this phase intentionally)
+
+    record("agent (no Steel session)", { task: "fetch Wikipedia: Card_game strategies" }, "invoking");
     let wikiSummary = "";
     try {
-      if (sideQuest) {
-        await sideQuest.goto("https://en.wikipedia.org/wiki/Card_game", { waitUntil: "domcontentloaded", timeout: 12000 });
-        wikiSummary = (await sideQuest.textContent("body").catch(() => ""))?.slice(0, 180) || "summary unavailable";
-        await sideQuest.waitForTimeout(1500);
-        await sideQuest.close().catch(() => {});
-      } else {
-        const wikiRes = await fetch(
-          "https://en.wikipedia.org/api/rest_v1/page/summary/Card_game",
-          { headers: { "User-Agent": "SteelDemo/1.0" }, signal: AbortSignal.timeout(6000) }
-        );
-        const wikiJson = await wikiRes.json();
-        wikiSummary = wikiJson.extract?.slice(0, 200) || "summary unavailable";
-      }
+      const wikiRes = await fetch(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Card_game",
+        { headers: { "User-Agent": "SteelDemo/1.0" }, signal: AbortSignal.timeout(6000) }
+      );
+      const wikiJson = await wikiRes.json();
+      wikiSummary = wikiJson.extract?.slice(0, 200) || "summary unavailable";
     } catch (_) {
       wikiSummary = "fetch failed (non-critical)";
     }
-    record("agent (no Steel session)", { task: "Wikipedia detour done — waiting 3s" }, "done");
+    record("agent (no Steel session)", { task: "Wikipedia fetch done — waiting 3s" }, "done");
 
     // Deliberate 3s pause — session sits completely idle, making the story tangible
     await new Promise((r) => setTimeout(r, 3000));
-
-    conn._closed = true;
-    await conn.browser.close().catch(() => {});
 
     return {
       done: false,
       phase: "resume",
       savedScore,
+      matchedPair,
+      faceUpIndex,
       evidence: card({
-        action: "tab hop to Wikipedia → close tab → resume original session",
+        action: "serverless fetch → Wikipedia 'Card game' — no Steel session used",
         targetSelector: "n/a",
         verdict: `game session sat idle in Steel cloud for 3s | "${wikiSummary.slice(0, 100)}…"`,
         outcome: "pass",
@@ -486,181 +456,99 @@ if (phase === "start") {
     };
   }
 
-if (phase === "resume") {
-     // Re-attach to the ORIGINAL game session — same sessionId, third CDP connect
-     const ws = `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
-     conn._closed = true;
-     await conn.browser.close().catch(() => {});
+  if (phase === "resume") {
+    // Re-attach to the ORIGINAL game session — same sessionId, third CDP connect.
+    // conn.browser is null here (we skipped the shared connect() for this phase).
+    const ws = `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (resume: re-attach to game session)");
+    const gamePage = fresh.context.pages().find((p) => p.url().includes("matharcade")) || fresh.page;
+    await gamePage.bringToFront();
 
-     // Visible pause so the user can see: browser closed → then new browser opens
-     await new Promise((r) => setTimeout(r, 4000));
+    const resumeScore = await gamePage.evaluate(() => matchGame.score).catch(() => null);
+    const cardState = await gamePage.evaluate(({ matchedPair, faceUpIndex }) => {
+      const cards = Array.from(document.querySelectorAll("#match-grid .card"));
+      const pairMatched = Array.isArray(matchedPair) && matchedPair.length === 2
+        ? matchedPair.every((index) => cards[index]?.classList.contains("matched"))
+        : false;
+      const faceUpPreserved = faceUpIndex === null || faceUpIndex === undefined
+        ? true
+        : cards[faceUpIndex]?.classList.contains("flipped") && !cards[faceUpIndex]?.classList.contains("matched");
+      return { pairMatched, faceUpPreserved };
+    }, { matchedPair, faceUpIndex }).catch(() => ({ pairMatched: false, faceUpPreserved: false }));
+    const heapIntact = resumeScore !== null && resumeScore === savedScore && cardState.pairMatched && cardState.faceUpPreserved;
+    const shot = await thumb(gamePage);
+    await fresh.browser.close().catch(() => {});
 
-     const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (resume: re-attach to game session)");
-     const gamePage = fresh.context.pages().find((p) => p.url().includes("matharcade")) || fresh.page;
-     await gamePage.bringToFront();
-
-     const resumeScore = await gamePage.evaluate(() => matchGame.score).catch(() => null);
-     const scoreIntact = resumeScore !== null && resumeScore === savedScore;
-
-     // Check card state if we have saved state from start phase
-     let cardStateIntact = true;
-     let cardStateDetails = "";
-     if (savedMatchedPair !== undefined) {
-       // Verify matched pair cards are still matched (have "matched" class)
-       const matchedPairStatus = await gamePage.evaluate(([idx1, idx2]) => {
-         const cards = document.querySelectorAll("#match-grid .card");
-         const idx1Valid = idx1 < cards.length;
-         const idx2Valid = idx2 < cards.length;
-         const idx1Matched = idx1Valid && cards[idx1].classList.contains("matched");
-         const idx2Matched = idx2Valid && cards[idx2].classList.contains("matched");
-         return [idx1Matched, idx2Matched, idx1Valid, idx2Valid];
-       }, savedMatchedPair);
-       
-       const [idx1Matched, idx2Matched, idx1Valid, idx2Valid] = matchedPairStatus;
-       cardStateIntact = cardStateIntact && idx1Matched && idx2Matched;
-       cardStateDetails += `matchedPair: [${savedMatchedPair[0]},${savedMatchedPair[1]}] `;
-       cardStateDetails += idx1Matched && idx2Matched ? '✓' : '✗';
-       if (!idx1Valid || !idx2Valid) {
-         cardStateDetails += ' (index out of bounds)';
-         cardStateIntact = false;
-       }
-     }
-     
-     if (savedFaceUpIndex !== undefined && cardStateIntact) {
-       // Verify face-up card is still unmatched (and presumably face-up)
-       // Note: In memory games, unmatched face-up cards typically flip back down after delay,
-       // but we check immediately after reconnect so it might still be face-up
-       const faceUpStatus = await gamePage.evaluate((idx) => {
-         const cards = document.querySelectorAll("#match-grid .card");
-         const valid = idx < cards.length;
-         const unmatched = valid && !cards[idx].classList.contains("matched");
-         return { valid, unmatched };
-       }, savedFaceUpIndex);
-       
-       cardStateIntact = cardStateIntact && faceUpStatus.unmatched && faceUpStatus.valid;
-       cardStateDetails += ` faceUp: ${savedFaceUpIndex} `;
-       cardStateDetails += faceUpStatus.unmatched && faceUpStatus.valid ? '✓' : '✗';
-       if (!faceUpStatus.valid) {
-         cardStateDetails += ' (index out of bounds)';
-         cardStateIntact = false;
-       }
-     }
-
-     const heapIntact = scoreIntact && cardStateIntact;
-     const shot = await thumb(gamePage);
-
-     // Pass fresh connection to finally block
-     conn.browser = fresh.browser;
-     conn.context = fresh.context;
-     conn._closed = false;
-
-     return {
-       done: false,
-       phase: "finish",
-       savedScore,
-       scoreConfirmed: heapIntact,
-       evidence: card({
-         action: "connectOverCDP(same sessionId) → read matchGame.score + verify card state",
-         targetSelector: "#match-grid",
-         verdict: heapIntact
-           ? `score: ${savedScore}→${resumeScore} ✓, ${cardStateDetails}`
-           : `score mismatch (${savedScore}→${resumeScore}) or card state changed: ${cardStateDetails}`,
-         outcome: heapIntact ? "pass" : "fail",
-         screenshotThumb: shot,
-         diagnosis: heapIntact 
-           ? null 
-           : !scoreIntact 
-             ? "JS heap may not have survived — score differs" 
-             : "Card state not preserved — matched cards or face-up card changed",
-       }),
-     };
-   }
+    return {
+      done: false,
+      phase: "finish",
+      savedScore,
+      matchedPair,
+      faceUpIndex,
+      scoreConfirmed: heapIntact,
+      evidence: card({
+        action: "reopen same Steel session → verify score, matched pair, and face-up card",
+        targetSelector: "#match-grid",
+        verdict: heapIntact
+          ? `score ${savedScore}→${resumeScore}, matched [${(matchedPair || []).join(", ")}] still removed, card ${faceUpIndex ?? "none"} still face-up`
+          : `state changed: score ${savedScore}→${resumeScore}, pair matched=${cardState.pairMatched}, face-up preserved=${cardState.faceUpPreserved}`,
+        outcome: heapIntact ? "pass" : "fail",
+        screenshotThumb: shot,
+        diagnosis: heapIntact ? null : "The resumed browser did not show the same game state that was left before disconnect.",
+      }),
+    };
+  }
 
   if (phase === "finish") {
-    // Keep flipping random unmatched card pairs until we get a match (score increases).
-    // Cards are already loaded in the cloud browser — same state as when we left
-    let matched = await page.evaluate(() => matchGame.matched).catch(() => 0);
-    const totalCards = await page.evaluate(() => matchGame.cards.length).catch(() => 16);
-    const triedPairs = new Set();
-
-    // Try pairs until we get at least one new match or exhaust attempts
-    const maxAttempts = Math.ceil(totalCards / 2);
-    for (let attempt = 0; attempt < maxAttempts && matched < 1; attempt++) {
-      const pair = await chooseRandomCardPair(page, triedPairs, selectedCards);
-      if (!pair) break;
-      triedPairs.add(pair.join(","));
-
-      await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card")[idx]?.click();
-      }, pair[0]);
-      await page.waitForTimeout(400);
-      await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card")[idx]?.click();
-      }, pair[1]);
-      await page.waitForTimeout(800);
-      matched = await page.evaluate(() => matchGame.matched).catch(() => matched);
+    // Re-attach to the game session — each Netlify invocation is stateless, so we must reconnect.
+    const ws = `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    let finishConn;
+    try {
+      finishConn = await connect(ws, sessionId, "chromium.connectOverCDP (finish: re-attach)");
+    } catch (err) {
+      await release(sessionId);
+      return { done: true, outcome: "fail", evidence: card({ action: "connectOverCDP (finish)", verdict: `reconnect failed: ${err.message}`, outcome: "fail" }) };
     }
+    const finishPage = finishConn.context.pages().find((p) => p.url().includes("matharcade")) || finishConn.page;
+    await finishPage.bringToFront();
 
-    const finalScore = await page.evaluate(() => matchGame.score).catch(() => 0);
-    const shot = await thumb(page);
+    const matched = await finishPage.evaluate(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const grid = () => document.querySelectorAll("#match-grid .card");
+      for (const c of matchGame.cards) {
+        if (c.matched) continue;
+        const pair = matchGame.cards.filter((x) => x.id === c.id && !x.matched);
+        if (pair.length !== 2) continue;
+        const els = grid();
+        els[pair[0].index]?.click();
+        await sleep(250);
+        els[pair[1].index]?.click();
+        await sleep(900);
+      }
+      await sleep(400);
+      return matchGame.matched;
+    }).catch(() => 0);
+
+    const finalScore = await finishPage.evaluate(() => matchGame.score).catch(() => 0);
+    const shot = await thumb(finishPage);
+    await finishConn.browser.close().catch(() => {});
     await release(sessionId);
 
     return {
       done: true,
-      outcome: "pass",
+      released: true,
+      outcome: matched > 0 ? "pass" : "recovered",
       evidence: card({
-        action: "resume game → flip random pairs → sessions.release(sessionId)",
+        action: "resume game → flip cards → sessions.release(sessionId)",
         targetSelector: "#match-grid .card",
         verdict: `game resumed and completed — final score: ${finalScore}, matches: ${matched}`,
-        outcome: "pass",
+        outcome: matched > 0 ? "pass" : "recovered",
         screenshotThumb: shot,
       }),
     };
   }
 
   return { done: true, outcome: "fail", evidence: card({ action: `unknown phase: ${phase}`, outcome: "fail" }) };
-}
-
-async function clickRandomUnmatchedCard(page, seenCards = new Set()) {
-  return await page.evaluate((seen) => {
-    const cards = Array.from(document.querySelectorAll("#match-grid .card"));
-    const available = cards
-      .map((card, index) => ({ card, index }))
-      .filter(({ card, index }) => !card.classList.contains("matched") && !seen.includes(index));
-    if (!available.length) return null;
-    const pick = available[Math.floor(Math.random() * available.length)];
-    pick.card?.click();
-    return pick.index;
-  }, Array.from(seenCards));
-}
-
-async function chooseRandomCardPair(page, triedPairs, excludedCards = []) {
-  return await page.evaluate(({ tried, excluded }) => {
-    const cards = Array.from(document.querySelectorAll("#match-grid .card"));
-    if (cards.length < 2) return null;
-    const excludedSet = new Set(excluded);
-    const eligible = cards
-      .map((card, index) => ({ card, index }))
-      .filter(({ card, index }) => !card.classList.contains("matched") && !excludedSet.has(index))
-      .map(({ index }) => index);
-    const pool = eligible.length >= 2
-      ? eligible
-      : cards
-          .map((card, index) => ({ card, index }))
-          .filter(({ card }) => !card.classList.contains("matched"))
-          .map(({ index }) => index);
-    if (pool.length < 2) return null;
-    const triedSet = new Set(tried);
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const a = pool[Math.floor(Math.random() * pool.length)];
-      let b = pool[Math.floor(Math.random() * pool.length)];
-      if (a === b) continue;
-      const key = [Math.min(a, b), Math.max(a, b)].join(",");
-      if (triedSet.has(key)) continue;
-      return [Math.min(a, b), Math.max(a, b)];
-    }
-    return null;
-  }, { tried: Array.from(triedPairs), excluded: Array.from(excludedCards) });
 }
 
 // Stock Predictor: 3-phase lifecycle through stockpredictors.onrender.com
@@ -680,7 +568,7 @@ async function stockPredictorStep(page, phase) {
     } catch (navErr) {
       console.error(`[stock-predictor] Navigation failed: ${navErr.message}`);
     }
-    
+
     return {
       done: false,
       phase: "await-boot",
@@ -706,29 +594,29 @@ async function stockPredictorStep(page, phase) {
       .then(() => true).catch(() => false);
     if (!ready) {
       // Still booting — loop back
-      return { 
-        done: false, 
+      return {
+        done: false,
         phase: "await-boot",
         step: "await-boot",
         action: "Waiting for Streamlit to finish booting",
         detail: "Render cold start in progress... checking for .stApp element",
       };
     }
-    
+
     // .stApp found, now wait for the actual input widget to be ready
     const inputReady = await page.waitForSelector('input[aria-label="Ticker symbol"], input[aria-label*="ticker"], input[aria-label*="stock"], input[placeholder*="ticker"], input[placeholder*="AAPL"], input[placeholder*="symbol"], .stTextInput input', { timeout: 10000 })
       .then(() => true).catch(() => false);
-    
+
     if (!inputReady) {
-      return { 
-        done: false, 
+      return {
+        done: false,
         phase: "await-boot",
         step: "await-widgets",
         action: "Streamlit loaded — waiting for input widgets",
         detail: ".stApp detected but ticker input not yet rendered",
       };
     }
-    
+
     return {
       done: false,
       phase: "predict",
@@ -839,34 +727,34 @@ async function stockPredictorStep(page, phase) {
     // Poll for prediction results — Streamlit free tier can take 30-60s
     // Wait for specific content indicating prediction is done
     record("stockPredictor.extract", { phase: "wait-for-prediction" }, "invoking", "Polling for prediction results (Market Open/Close, Linear Regression, XGBoost, chart)");
-    
+
     const predictionReady = await page.waitForFunction(
       () => {
         const text = document.body.innerText.toLowerCase();
         // Check for key prediction result indicators
-        return text.includes("market open") && 
-               text.includes("market close") && 
+        return text.includes("market open") &&
+               text.includes("market close") &&
                (text.includes("linear regression") || text.includes("xgboost")) &&
                text.includes("chart");
       },
       { timeout: 90000, polling: 5000 }
     ).then(() => true).catch(() => false);
-    
+
     if (!predictionReady) {
       record("stockPredictor.extract", { phase: "wait-for-prediction" }, "fail", "Timeout waiting for prediction results after 90s");
       // Still try to extract what we have
     } else {
       record("stockPredictor.extract", { phase: "wait-for-prediction" }, "ok", "Prediction results detected");
     }
-    
+
     // Additional wait for chart/canvas to fully render
     await page.waitForTimeout(3000);
-    
+
     record("stockPredictor.extract", { phase: "screenshot" }, "invoking", "Capturing full-page screenshot");
     const shot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: true });
     const b64 = shot.toString("base64");
     record("stockPredictor.extract", { phase: "screenshot", size: shot.length }, "ok", "Screenshot captured");
-    
+
     record("stockPredictor.extract", { phase: "scrape-text" }, "invoking", "Scraping visible page text");
     const text = await page.evaluate(() => {
       const unwanted = document.querySelectorAll("script, style, nav, footer, header");

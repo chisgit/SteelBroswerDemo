@@ -1,29 +1,40 @@
-// Return the websocket URL for an existing Steel session so the agent can re-attach
-// without releasing it. The URL is deterministic: Steel's CDP endpoint + apiKey + sessionId.
-// Logging this call as "chromium.connectOverCDP (resume)" keeps the API console accurate.
-import { record } from "./lib/logger.mjs";
-import { popLog } from "./lib/logger.mjs";
+import { record, popLog } from "./lib/logger.mjs";
+import { retrieveSession } from "./lib/steel.mjs";
 
 const STEEL_API_KEY = process.env.STEEL_API_KEY;
 
 export const handler = async (event) => {
   try {
     if (!STEEL_API_KEY) {
-      return json(500, { error: "STEEL_API_KEY not configured" });
+      return json(500, { error: "STEEL_API_KEY not configured", apiLog: popLog() });
     }
+
     const body = event.body ? JSON.parse(event.body) : {};
     const { sessionId } = body;
     if (!sessionId) {
-      return json(400, { error: "sessionId is required" });
+      return json(400, { error: "sessionId is required", apiLog: popLog() });
     }
 
-    const websocketUrl = `wss://connect.steel.dev?apiKey=${STEEL_API_KEY}&sessionId=${sessionId}`;
-    record("chromium.connectOverCDP (resume)", { sessionId: sessionId.slice(0, 8) + "…" }, "ready");
+    const session = await retrieveSession(sessionId);
+    if (!session) {
+      return json(404, {
+        error: "session_not_live",
+        detail: "Session is expired or no longer live",
+        apiLog: popLog(),
+      });
+    }
 
-    return json(200, { websocketUrl, apiLog: popLog() });
+    record("chromium.connectOverCDP (resume)", { sessionId: sessionId.slice(0, 8) + "..." }, "ready");
+
+    return json(200, {
+      sessionId: session.id,
+      debugUrl: session.debugUrl,
+      sessionViewerUrl: session.sessionViewerUrl,
+      apiLog: popLog(),
+    });
   } catch (err) {
     console.error("[session-resume] Error:", err.message);
-    return json(502, { error: "session_resume_failed", detail: err.message });
+    return json(502, { error: "session_resume_failed", detail: err.message, apiLog: popLog() });
   }
 };
 

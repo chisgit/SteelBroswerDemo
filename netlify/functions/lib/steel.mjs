@@ -48,8 +48,13 @@ export async function createSession(opts = {}) {
     // Hobby plan: 429 = concurrent session limit. Release all stale sessions and retry once.
     if (err.message && err.message.includes("429")) {
       record("sessions.create", {}, "429 — releasing stale sessions, retrying");
-      await releaseAllSessions();
-      session = await client().sessions.create(params);
+      const released = await releaseAllSessions();
+      if (!released) throw new Error("429 concurrent session limit: releaseAll failed, cannot retry");
+      try {
+        session = await client().sessions.create(params);
+      } catch (retryErr) {
+        throw new Error(`429 on retry after releaseAll: ${retryErr.message}`);
+      }
     } else {
       throw err;
     }
@@ -65,12 +70,33 @@ export async function createSession(opts = {}) {
 }
 
 /** Release all live sessions — used to clear the hobby-plan concurrent limit on 429. */
+export async function retrieveSession(sessionId) {
+  record("sessions.retrieve", { sessionId: sanitize(sessionId) }, "invoking");
+  try {
+    const session = await client().sessions.retrieve(sessionId);
+    const live = session.status === "live" || session.status === "running";
+    record("sessions.retrieve", { sessionId: sanitize(sessionId), status: session.status }, live ? "live" : "not-live");
+    if (!live) return null;
+    return {
+      id: session.id,
+      debugUrl: session.debugUrl,
+      sessionViewerUrl: session.sessionViewerUrl,
+      status: session.status,
+    };
+  } catch (err) {
+    record("sessions.retrieve", { sessionId: sanitize(sessionId), error: err.message }, "not-found");
+    return null;
+  }
+}
+
 export async function releaseAllSessions() {
   try {
     await client().sessions.releaseAll({});
     record("sessions.releaseAll", {}, "ok");
-  } catch (_) {
-    // best-effort
+    return true;
+  } catch (err) {
+    record("sessions.releaseAll", { error: err.message }, "failed");
+    return false;
   }
 }
 
