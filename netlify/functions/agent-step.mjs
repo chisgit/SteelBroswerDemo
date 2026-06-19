@@ -662,7 +662,16 @@ async function stockPredictorStep(page, phase) {
       };
     }
 
-    // Step 2: Take screenshot and use NVIDIA to find Predict button
+    // Step 2: Click away from input to close multi-select dropdown
+    record("stockPredictor.predict", { phase: "close-dropdown" }, "invoking", "Clicking body to close ticker dropdown");
+    await page.mouse.click(10, 10); // Click top-left corner to dismiss dropdown
+    await page.waitForTimeout(500);
+    record("stockPredictor.predict", { phase: "close-dropdown" }, "ok", "Dropdown dismissed");
+
+    // Step 3: Small pause for UI to settle
+    await page.waitForTimeout(500);
+
+    // Step 4: Take screenshot and use NVIDIA to find Predict button
     const screenshot = await page.screenshot({ type: "jpeg", quality: 75 });
     const b64 = screenshot.toString("base64");
 
