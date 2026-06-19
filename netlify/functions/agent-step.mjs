@@ -1,7 +1,7 @@
 // The agent loop's atomic step (KTD1): exactly one observe->decide->act cycle,
 // returns structured state so the front-end can loop (U5). One screenshot + at most
 // one model call + one action per invocation to stay under the 10s free-tier cap.
-import { createSession, connect, release, relaunchWithStealth, clientView } from "./lib/steel.mjs";
+import { createSession, connect, release, relaunchWithProxy, clientView } from "./lib/steel.mjs";
 import { flowMeta } from "./lib/flows.mjs";
 import { classifyTiles } from "./lib/gemini.mjs";
 import { classifyTilesNVIDIA } from "./lib/nvidia.mjs";
@@ -221,7 +221,7 @@ async function botWallStep(page, base, phase, sessionId, meta) {
     if (walled) {
       // Relaunch with stealth + proxy. This returns a NEW session; we hand it back so
       // the UI re-embeds its debugUrl, and the next step (continue) drives it.
-      const fresh = await relaunchWithStealth(sessionId, { solveCaptcha: true });
+      const fresh = await relaunchWithProxy(sessionId, { solveCaptcha: true });
       return {
         done: false,
         outcome: "fail",

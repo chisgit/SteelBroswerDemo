@@ -82,7 +82,7 @@ export async function release(sessionId) {
  * Relaunch with proxy + ad-block: session-creation options can't be toggled mid-session,
  * so recovery = release old + create new.
  */
-export async function relaunchWithStealth(oldSessionId, opts = {}) {
+export async function relaunchWithProxy(oldSessionId, opts = {}) {
   await release(oldSessionId);
   return createSession({ ...opts, useProxy: true, blockAds: true });
 }
