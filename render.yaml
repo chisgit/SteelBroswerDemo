@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: steel-captcha-gauntlet
+    env: node
+    plan: standard
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GAUNTLET_BASE_URL
+        fromDatabase:
+          name: steel-captcha-gauntlet
+          property: connectionString

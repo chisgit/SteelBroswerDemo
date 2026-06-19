@@ -6,15 +6,15 @@
   "private": true,
   "scripts": {
     "setup": "node scripts/download-gauntlet-images.mjs",
-    "dev": "netlify dev",
-    "build": "node scripts/download-gauntlet-images.mjs"
+    "dev": "node server.mjs",
+    "build": "node scripts/download-gauntlet-images.mjs",
+    "start": "node server.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
     "playwright-core": "^1.48.0",
     "steel-sdk": "^0.6.0"
-  },
-  "devDependencies": {
-    "netlify-cli": "^17.0.0"
   }
 }
