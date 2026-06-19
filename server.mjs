@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { handler as agentStepHandler } from "./netlify/functions/agent-step.mjs";
 import { handler as sessionCreateHandler } from "./netlify/functions/session-create.mjs";
+import { handler as flowsHandler } from "./netlify/functions/flows.mjs";
 
 // Override for local dev
 if (!process.env.GAUNTLET_BASE_URL || process.env.GAUNTLET_BASE_URL.includes("netlify")) {
@@ -23,6 +24,17 @@ app.use(express.json());
 // Health check
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+// Flows catalog endpoint
+app.get("/api/flows", async (req, res) => {
+  try {
+    const result = await flowsHandler();
+    res.status(result.statusCode || 200).json(JSON.parse(result.body || "{}"));
+  } catch (error) {
+    console.error("Flows error:", error);
+    res.status(500).json({ error: "flows_failed", detail: error.message });
+  }
 });
 
 // Session creation endpoint — wrap Netlify handler
