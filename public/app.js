@@ -21,7 +21,7 @@ async function init() {
   renderRecipe(activeRecipe);
   renderRecipePicker();
   renderChips();
-  const ready = await prewarm();
+  const ready = (await resumeFromHandle()) || (await prewarm());
   $("run-btn").disabled = !ready;
   $("fleet-btn").disabled = !ready;
   $("run-btn").addEventListener("click", runGauntlet);
@@ -59,10 +59,65 @@ async function prewarm() {
   $("sval-id").textContent = session.sessionId || "—";
   $("sval-status").textContent = "connected";
   $("sval-status").className = "sval ok";
+  rememberSession(session.sessionId);
   setBanner("Ready — click Run demo", "session ready");
   setSnippet(
     `await client.sessions.create({});\n// sessionId: "${(session.sessionId || "").slice(0, 8)}…"`,
     "Session live. Steel cloud browser ready."
+  );
+  return true;
+}
+
+const SESSION_KEY = "steel.sessionId";
+
+function rememberSession(sessionId) {
+  if (!sessionId) return;
+  try { localStorage.setItem(SESSION_KEY, sessionId); } catch (_) {}
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("sessionId") !== sessionId) {
+    url.searchParams.set("sessionId", sessionId);
+    window.history.replaceState({}, "", url);
+  }
+}
+
+function forgetSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+  const url = new URL(window.location.href);
+  url.searchParams.delete("sessionId");
+  window.history.replaceState({}, "", url);
+}
+
+async function resumeFromHandle() {
+  const fromUrl = new URLSearchParams(window.location.search).get("sessionId");
+  let saved = null;
+  try { saved = localStorage.getItem(SESSION_KEY); } catch (_) {}
+  const sessionId = fromUrl || saved;
+  if (!sessionId) return false;
+
+  setBanner("Resuming an existing Steel session...", "sessions.retrieve");
+  setSnippet(
+    `await client.sessions.retrieve("${sessionId.slice(0, 8)}...");`,
+    "Re-attaching a fresh browser to a session created earlier."
+  );
+  const res = await api("session-resume", { sessionId });
+  if (res.apiLog) res.apiLog.forEach(addLog);
+
+  if (res.error || !res.debugUrl) {
+    forgetSession();
+    setBanner("Previous session expired - starting fresh", "");
+    return false;
+  }
+
+  session = { sessionId: res.sessionId, debugUrl: res.debugUrl, sessionViewerUrl: res.sessionViewerUrl };
+  $("viewer").src = res.debugUrl + "?interactive=false&showControls=true";
+  $("sval-id").textContent = res.sessionId;
+  $("sval-status").textContent = "resumed";
+  $("sval-status").className = "sval ok";
+  rememberSession(res.sessionId);
+  setBanner("Resumed - cloud browser state preserved", "session resumed");
+  setProve(
+    "Same Steel cloud session, new browser. The cloud browser kept running with full state while this page was closed.",
+    ""
   );
   return true;
 }
@@ -84,38 +139,42 @@ async function runGauntlet() {
 }
 
 async function runRoute(route) {
-   let phase = "start";
-   let last = "fail";
-   const carry = {};
-   for (let step = 0; step < MAX_STEPS; step++) {
-     const res = await api("agent-step", {
-       sessionId: session.sessionId,
-       websocketUrl: session.websocketUrl,
-       route,
-       phase,
-       ...carry,
-     });
-     if (res.flowTitle) setBanner(res.flowTitle, res.feature);
-     if (res.apiSnippet) setSnippet(res.apiSnippet, res.apiCall?.description || "");
-     if (res.proves) setProve(res.proves, res.docsUrl);
-     if (res.apiLog) res.apiLog.forEach(addLog);
-     if (res.evidence) addEvidence(res.evidence);
-     last = res.outcome || last;
-     if (res.newSession) {
-       session = { ...res.newSession, websocketUrl: res.newWebsocketUrl };
-       $("viewer").src = session.debugUrl + "?showControls=true";
-       $("sval-id").textContent = session.sessionId || "—";
-       setApiCall("sessions.create (relaunch)", '{ useProxy: true, blockAds: true }', "Released old session, created new proxy-routed session.");
-     }
-     if (res.savedScore !== undefined) carry.savedScore = res.savedScore;
-     if (res.selectedCards !== undefined) carry.selectedCards = res.selectedCards;
-     if (res.matchedPair !== undefined) carry.matchedPair = res.matchedPair;
-     if (res.faceUpIndex !== undefined) carry.faceUpIndex = res.faceUpIndex;
-     if (res.done) break;
-     phase = res.phase || "continue";
-   }
-   return last;
- }
+  let phase = "start";
+  let last = "fail";
+  const carry = {};
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const res = await api("agent-step", {
+      sessionId: session.sessionId,
+      websocketUrl: session.websocketUrl,
+      route,
+      phase,
+      ...carry,
+    });
+    if (res.flowTitle) setBanner(res.flowTitle, res.feature);
+    if (res.apiSnippet) setSnippet(res.apiSnippet, res.apiCall?.description || "");
+    if (res.proves) setProve(res.proves, res.docsUrl);
+    if (res.apiLog) res.apiLog.forEach(addLog);
+    if (res.evidence) addEvidence(res.evidence);
+    last = res.outcome || last;
+    if (res.newSession) {
+      session = { ...res.newSession, websocketUrl: res.newWebsocketUrl };
+      $("viewer").src = session.debugUrl + "?showControls=true";
+      $("sval-id").textContent = session.sessionId || "—";
+      rememberSession(session.sessionId);
+      setApiCall("sessions.create (relaunch)", '{ useProxy: true, blockAds: true }', "Released old session, created new proxy-routed session.");
+    }
+    if (res.savedScore !== undefined) carry.savedScore = res.savedScore;
+    if (res.selectedCards !== undefined) carry.selectedCards = res.selectedCards;
+    if (res.matchedPair !== undefined) carry.matchedPair = res.matchedPair;
+    if (res.faceUpIndex !== undefined) carry.faceUpIndex = res.faceUpIndex;
+    if (res.done) {
+      if (res.released) forgetSession();
+      break;
+    }
+    phase = res.phase || "continue";
+  }
+  return last;
+}
 
 async function runFleet() {
   $("fleet-btn").disabled = true;
