@@ -8,9 +8,9 @@ export const handler = async (event) => {
     console.log("[session-create] GEMINI_API_KEY present:", !!process.env.GEMINI_API_KEY);
     const body = event.body ? JSON.parse(event.body) : {};
     const session = await createSession({
-      solveCaptcha: Boolean(body.solveCaptcha),  // hobby tier defaults to false
-      stealth: Boolean(body.stealth),
+      solveCaptcha: Boolean(body.solveCaptcha),
       useProxy: Boolean(body.useProxy),
+      blockAds: Boolean(body.blockAds),
       dimensions: body.dimensions,
     });
     return json(200, clientView(session));

@@ -194,6 +194,27 @@ button.ghost {
 .tag.progress { background: rgba(147,160,194,0.15); color: var(--muted); }
 .tag.recovered { background: rgba(255,200,87,0.15); color: var(--warn); }
 
+/* API call log — live console */
+.api-log {
+  background: #0a0e1a;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem;
+  max-height: 260px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+.log-line { white-space: nowrap; }
+.log-ts { color: #555; margin-right: 0.5rem; }
+.log-method { color: #cfe0ff; margin-right: 0.4rem; }
+.log-status { }
+.log-ok { color: var(--ok); }
+.log-warn { color: var(--warn); }
+.log-detail { color: var(--muted); }
+.log-line.muted { color: #444; }
+
 /* fleet dashboard */
 .dash { display: grid; gap: 0.5rem; }
 .dash .row { display: grid; grid-template-columns: 130px 1fr; gap: 0.6rem; align-items: center; font-size: 0.85rem; }

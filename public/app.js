@@ -92,13 +92,14 @@ async function runRoute(route) {
     if (res.flowTitle) setBanner(res.flowTitle, res.feature);
     if (res.apiCall) setApiCall(res.apiCall.method, JSON.stringify(res.apiCall.params, null, 2), res.apiCall.description);
     if (res.proves) setProve(res.proves, res.docsUrl);
+    if (res.apiLog) res.apiLog.forEach(addLog);
     if (res.evidence) addEvidence(res.evidence);
     last = res.outcome || last;
     if (res.newSession) {
       session = { ...res.newSession, websocketUrl: res.newWebsocketUrl };
       $("viewer").src = session.debugUrl + "?showControls=true";
       $("sval-id").textContent = session.sessionId || "—";
-      setApiCall("sessions.create (stealth relaunch)", '{ stealthConfig: { humanizeInteractions: true }, useProxy: true }', "Released old session, created new stealthed session.");
+      setApiCall("sessions.create (relaunch)", '{ useProxy: true, blockAds: true }', "Released old session, created new proxy-routed session.");
     }
     if (res.done) break;
     phase = "continue";
@@ -170,6 +171,21 @@ function setActiveChip(route) {
 function setChipOutcome(route, outcome) {
   const c = $("chip-" + route);
   if (c) { c.classList.remove("active"); c.classList.add(outcome); }
+}
+
+function addLog(entry) {
+  const el = $("api-log");
+  if (!el) return;
+  const row = document.createElement("div");
+  row.className = "log-line";
+  const ts = (entry.ts || "").slice(11, 19);
+  const params = typeof entry.params === "object" ? JSON.stringify(entry.params) : (entry.params || "");
+  row.innerHTML = `<span class="log-ts">${esc(ts)}</span> <span class="log-method">${esc(entry.method)}</span> <span class="log-status ${entry.status === 'ok' || entry.status === 'connected' || entry.status === 'found — captcha solved' ? 'log-ok' : 'log-warn'}">${esc(entry.status)}</span>${entry.detail ? ` <span class="log-detail">${esc(entry.detail)}</span>` : ""}`;
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+  // remove initial placeholder
+  const placeholder = el.querySelector(".muted");
+  if (placeholder) placeholder.remove();
 }
 
 function clearEvidence() { $("evidence").innerHTML = ""; }

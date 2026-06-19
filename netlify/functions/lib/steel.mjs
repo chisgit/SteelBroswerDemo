@@ -1,24 +1,33 @@
 // Steel Sessions API helpers (server-side only — holds the API key, KTD2).
 // Thin wrapper over steel-sdk + playwright-core CDP connect.
+// Every SDK call is logged to a buffer so the UI can show a live API console.
 import Steel from "steel-sdk";
 import { chromium } from "playwright-core";
+import { record } from "./logger.mjs";
 
 const STEEL_API_KEY = process.env.STEEL_API_KEY;
+
+// --- Steel session helpers -------------------------------------------------
 
 function client() {
   if (!STEEL_API_KEY) throw new Error("STEEL_API_KEY not configured");
   return new Steel({ steelAPIKey: STEEL_API_KEY });
 }
 
+function sanitize(v) {
+  if (typeof v === "string" && v.length > 60) return v.slice(0, 56) + "…";
+  return v;
+}
+
 /**
  * Create a Steel cloud browser session.
  * @param {object} opts
- * @param {boolean} [opts.solveCaptcha] enable Steel's CAPTCHA auto-solve
- * @param {boolean} [opts.useProxy]     route through Steel's proxy network
- * @param {boolean} [opts.blockAds]     block ads in the session
- * @param {{width:number,height:number}} [opts.dimensions] viewport (mobile emulation)
- * @param {string}  [opts.userAgent]    custom user agent
- * @param {string}  [opts.region]       session region
+ * @param {boolean} [opts.solveCaptcha]
+ * @param {boolean} [opts.useProxy]
+ * @param {boolean} [opts.blockAds]
+ * @param {{width:number,height:number}} [opts.dimensions]
+ * @param {string}  [opts.userAgent]
+ * @param {string}  [opts.region]
  * @returns {Promise<{id,debugUrl,sessionViewerUrl,websocketUrl}>}
  */
 export async function createSession(opts = {}) {
@@ -30,7 +39,11 @@ export async function createSession(opts = {}) {
   if (opts.userAgent) params.userAgent = opts.userAgent;
   if (opts.region) params.region = opts.region;
 
+  record("sessions.create", params, "invoking");
+  const t0 = Date.now();
   const session = await client().sessions.create(params);
+  const ms = Date.now() - t0;
+  record("sessions.create", { sessionId: sanitize(session.id), status: session.status }, "ok", `${ms}ms`);
   return {
     id: session.id,
     debugUrl: session.debugUrl,
@@ -39,13 +52,16 @@ export async function createSession(opts = {}) {
   };
 }
 
-/** Connect Playwright to a live Steel session over CDP (server-side only).
- *  Pass the session's websocketUrl when known, else a sessionId to build the URL. */
+/** Connect Playwright to a live Steel session over CDP (server-side only). */
 export async function connect(websocketUrl, sessionId) {
   const ws =
     websocketUrl ||
     `wss://connect.steel.dev?apiKey=${STEEL_API_KEY}&sessionId=${sessionId || ""}`;
+  record("chromium.connectOverCDP", { sessionId: sanitize(sessionId) }, "invoking");
+  const t0 = Date.now();
   const browser = await chromium.connectOverCDP(ws);
+  const ms = Date.now() - t0;
+  record("chromium.connectOverCDP", { pages: browser.contexts().length }, "connected", `${ms}ms`);
   const context = browser.contexts()[0] || (await browser.newContext());
   const page = context.pages()[0] || (await context.newPage());
   return { browser, context, page };
@@ -54,16 +70,17 @@ export async function connect(websocketUrl, sessionId) {
 /** Release (tear down) a session. Best-effort; never throws into the caller. */
 export async function release(sessionId) {
   try {
+    record("sessions.release", { sessionId: sanitize(sessionId) }, "invoking");
     await client().sessions.release(sessionId);
+    record("sessions.release", { sessionId: sanitize(sessionId) }, "ok");
   } catch (_) {
-    /* already gone / network — ignore on teardown */
+    record("sessions.release", { sessionId: sanitize(sessionId) }, "ignored (already released)");
   }
 }
 
 /**
- * Stealth relaunch (KTD10): proxy and ad-blocking are session-creation options and
- * cannot be toggled mid-session, so recovery from a bot wall = release + create new.
- * @returns {Promise<{id,debugUrl,sessionViewerUrl,websocketUrl}>} the NEW session
+ * Relaunch with proxy + ad-block: session-creation options can't be toggled mid-session,
+ * so recovery = release old + create new.
  */
 export async function relaunchWithStealth(oldSessionId, opts = {}) {
   await release(oldSessionId);

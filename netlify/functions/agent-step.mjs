@@ -4,6 +4,7 @@
 import { createSession, connect, release, relaunchWithStealth, clientView } from "./lib/steel.mjs";
 import { flowMeta } from "./lib/flows.mjs";
 import { classifyTiles } from "./lib/gemini.mjs";
+import { classifyTilesNVIDIA } from "./lib/nvidia.mjs";
 import { card, thumb } from "./lib/evidence.mjs";
 
 const BASE = process.env.GAUNTLET_BASE_URL || "";
@@ -160,7 +161,7 @@ async function hcaptchaStep(page, base, phase, meta) {
   };
 }
 
-// Vision-grid: screenshot tiles, classify with Gemini, click matches, submit.
+// Vision-grid: screenshot tiles, classify with NVIDIA MiniMax-M3, click matches, submit.
 async function visionGridStep(page, base, phase) {
   if (phase === "start") {
     await page.goto(base + flowMeta("vision-grid").path, { waitUntil: "networkidle" });
@@ -169,7 +170,8 @@ async function visionGridStep(page, base, phase) {
 
   // Pull each tile as its own base64 image (per-tile vision, KTD4).
   const tiles = await tilesAsBase64(page);
-  const { matches, verdicts } = await classifyTiles(tiles, "dog");
+  // Use NVIDIA MiniMax-M3 for vision classification (faster + reliable free tier).
+  const { matches, verdicts } = await classifyTilesNVIDIA(tiles, "dog");
 
   for (const id of matches) {
     await page.click("#tile-" + id).catch(() => {});
@@ -189,9 +191,9 @@ async function visionGridStep(page, base, phase) {
     outcome,
     selected: matches,
     apiCall: {
-      method: "page.screenshot → gemini.classifyTiles → page.click",
+      method: "page.screenshot → nvidia-minimax-m3.classifyTiles → page.click",
       params: { tileCount: tiles.length, target: "dog", matches: matches.length },
-      description: `Screenshot ${tiles.length} tiles → Gemini classifies each → click ${matches.length} matching tiles → submit`,
+      description: `Screenshot ${tiles.length} tiles → NVIDIA MiniMax-M3 classifies each → click ${matches.length} matching tiles → submit`,
     },
     evidence: card({
       action: `vision-classify ${tiles.length} tiles for "dog" → click matches`,
