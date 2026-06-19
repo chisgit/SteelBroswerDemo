@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { handler as agentStepHandler } from "./netlify/functions/agent-step.mjs";
 import { handler as sessionCreateHandler } from "./netlify/functions/session-create.mjs";
-import { handler as flowsHandler } from "./netlify/functions/flows.mjs";
+import { handler as flowsCatalogHandler } from "./netlify/functions/flows-catalog.mjs";
 
 // Override for local dev
 if (!process.env.GAUNTLET_BASE_URL || process.env.GAUNTLET_BASE_URL.includes("netlify")) {
@@ -29,7 +29,7 @@ app.get("/health", (req, res) => {
 // Flows catalog endpoint
 app.get("/api/flows", async (req, res) => {
   try {
-    const result = await flowsHandler();
+    const result = await flowsCatalogHandler({});
     res.status(result.statusCode || 200).json(JSON.parse(result.body || "{}"));
   } catch (error) {
     console.error("Flows error:", error);

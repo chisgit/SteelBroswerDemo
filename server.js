@@ -7,6 +7,7 @@ import { handler as sessionCreateHandler } from './netlify/functions/session-cre
 import { handler as sessionResumeHandler } from './netlify/functions/session-resume.mjs';
 import { handler as fleetRunHandler } from './netlify/functions/fleet-run.mjs';
 import { handler as healthHandler } from './netlify/functions/health.mjs';
+import { handler as flowsCatalogHandler } from './netlify/functions/flows-catalog.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -65,6 +66,16 @@ app.get('/api/health', async (req, res) => {
     res.status(result.statusCode || 200).set(result.headers || {}).send(result.body);
   } catch (error) {
     console.error('Health check error:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/flows', async (req, res) => {
+  try {
+    const result = await flowsCatalogHandler({});
+    res.status(result.statusCode || 200).set(result.headers || {}).send(result.body);
+  } catch (error) {
+    console.error('Flows catalog error:', error);
     res.status(500).send({ error: 'Internal server error' });
   }
 });
