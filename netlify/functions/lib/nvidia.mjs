@@ -1,11 +1,11 @@
-// NVIDIA NIM vision classifier using MiniMax-M3 (free tier, multimodal).
+// NVIDIA NIM vision classifier using Kimi K2.6 (free tier, multimodal).
 // Used when Gemini is unavailable or slow.
 
 const API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const MODEL = "minimaxai/minimax-m3";
+const MODEL = "moonshotai/kimi-k2.6";
 
 /**
- * Classify each tile image against a target class using NVIDIA MiniMax-M3.
+ * Classify each tile image against a target class using NVIDIA Kimi K2.6.
  * @param {{id:number, b64:string, mime:string}[]} tiles
  * @param {string} target e.g. "dog"
  * @returns {Promise<{matches:number[], verdicts:{id:number, isMatch:boolean}[]}>}
@@ -16,7 +16,7 @@ export async function classifyTilesNVIDIA(tiles, target) {
 
   console.log(`[nvidia-vision] tiles=${tiles.length} target=${target}`);
 
-  // Build messages with images for MiniMax-M3 multimodal support
+  // Build messages with images for Kimi K2.6 multimodal support
   const messages = [
     {
       role: "user",
@@ -43,7 +43,7 @@ export async function classifyTilesNVIDIA(tiles, target) {
     stream: false,
   };
 
-  console.log(`[nvidia-vision] calling MiniMax-M3...`);
+  console.log(`[nvidia-vision] calling Kimi K2.6...`);
   const response = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -73,7 +73,7 @@ export async function classifyTilesNVIDIA(tiles, target) {
 }
 
 /**
- * Use NVIDIA MiniMax-M3 to visually find a UI element (e.g., "Predict button") on a screenshot
+ * Use NVIDIA Kimi K2.6 to visually find a UI element (e.g., "Predict button") on a screenshot
  * and return its approximate center coordinates as percentages (0-100).
  * @param {string} b64Screenshot - Base64 encoded screenshot
  * @param {string} targetDescription - Description of element to find (e.g., "Predict button", "Submit button")
@@ -120,7 +120,7 @@ If the element is not visible, return found: false with x_percent: 50, y_percent
     stream: false,
   };
 
-  console.log(`[nvidia-find-element] calling MiniMax-M3...`);
+  console.log(`[nvidia-find-element] calling Kimi K2.6...`);
   const response = await fetch(API_URL, {
     method: "POST",
     headers: {
