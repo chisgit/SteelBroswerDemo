@@ -86,12 +86,14 @@ async function runGauntlet() {
 async function runRoute(route) {
   let phase = "start";
   let last = "fail";
+  const carry = {};
   for (let step = 0; step < MAX_STEPS; step++) {
     const res = await api("agent-step", {
       sessionId: session.sessionId,
       websocketUrl: session.websocketUrl,
       route,
       phase,
+      ...carry,
     });
     if (res.flowTitle) setBanner(res.flowTitle, res.feature);
     if (res.apiSnippet) setSnippet(res.apiSnippet, res.apiCall?.description || "");
@@ -105,8 +107,9 @@ async function runRoute(route) {
       $("sval-id").textContent = session.sessionId || "—";
       setApiCall("sessions.create (relaunch)", '{ useProxy: true, blockAds: true }', "Released old session, created new proxy-routed session.");
     }
+    if (res.savedScore !== undefined) carry.savedScore = res.savedScore;
     if (res.done) break;
-    phase = "continue";
+    phase = res.phase || "continue";
   }
   return last;
 }

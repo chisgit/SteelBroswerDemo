@@ -6,7 +6,7 @@ import { flowMeta } from "./lib/flows.mjs";
 import { classifyTiles } from "./lib/gemini.mjs";
 import { classifyTilesNVIDIA } from "./lib/nvidia.mjs";
 import { card, thumb } from "./lib/evidence.mjs";
-import { popLog } from "./lib/logger.mjs";
+import { popLog, record } from "./lib/logger.mjs";
 
 const BASE = process.env.GAUNTLET_BASE_URL || "";
 
@@ -16,7 +16,7 @@ export const handler = async (event) => {
   try {
     const parsed = JSON.parse(event.body || "{}");
     route = parsed.route || "unknown";
-    const { sessionId, websocketUrl, phase = "start", baseUrl } = parsed;
+    const { sessionId, websocketUrl, phase = "start", baseUrl, savedScore } = parsed;
     const meta = flowMeta(route);
     const base = baseUrl || BASE || originFrom(event);
 
@@ -24,7 +24,7 @@ export const handler = async (event) => {
     conn = await connect(websocketUrl, sessionId);
     const { page } = conn;
 
-    const result = await runStep({ page, route, phase, base, sessionId, meta });
+    const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore });
     return json(200, {
       flowTitle: meta.title,
       feature: meta.feature,
@@ -38,13 +38,13 @@ export const handler = async (event) => {
     console.error(`[step] ERROR ${route}:`, err.message);
     return json(502, { error: "agent_step_failed", detail: err.message, done: true, outcome: "fail", apiLog: popLog() });
   } finally {
-    if (conn?.browser) await conn.browser.close().catch(() => {});
+    if (conn?.browser && !conn._closed) await conn.browser.close().catch(() => {});
   }
 };
 
 // --- per-route step logic -------------------------------------------------
 
-async function runStep({ page, route, phase, base, sessionId, meta }) {
+async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore }) {
   switch (route) {
     case "recaptcha":
     case "turnstile":
@@ -57,6 +57,8 @@ async function runStep({ page, route, phase, base, sessionId, meta }) {
       return botWallStep(page, base, phase, sessionId, meta);
     case "mobile-bug":
       return mobileBugStep(page, base, phase, meta);
+    case "math-arcade":
+      return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore);
     default:
       return genericStep(page, base, meta);
   }
@@ -308,6 +310,169 @@ async function mobileBugStep(page, base, phase, meta) {
       recovery: done ? "clicked #menu-continue alternate path — recovered" : null,
     }),
   };
+}
+
+// Math Arcade persistent-session demo: 5-phase lifecycle proves Steel JS heap survives CDP disconnect.
+// Phase:  start → detach → other-work → resume → finish
+async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore) {
+  const ARCADE_URL = "https://matharcadewrecker.netlify.app";
+
+  if (phase === "start") {
+    // Navigate and start game
+    await page.goto(ARCADE_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.evaluate(() => app.loadGame("match"));
+    await page.waitForFunction(() => typeof matchGame !== "undefined", { timeout: 8000 });
+    await page.waitForSelector("#match-grid .card", { timeout: 8000 });
+
+    // Click two pairs (4 cards total) via evaluate to avoid geometry issues
+    await page.evaluate(() => {
+      const cards = [...document.querySelectorAll("#match-grid .card:not(.matched)")];
+      if (cards.length >= 4) {
+        cards[0].click();
+        cards[1].click();
+      }
+    });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => {
+      const cards = [...document.querySelectorAll("#match-grid .card:not(.matched):not(.flipped)")];
+      if (cards.length >= 2) {
+        cards[0].click();
+        cards[1].click();
+      }
+    });
+    await page.waitForTimeout(600);
+
+    const score = await page.evaluate(() => matchGame.score).catch(() => 0);
+    const shot = await thumb(page);
+    return {
+      done: false,
+      phase: "detach",
+      savedScore: score,
+      evidence: card({
+        action: "navigate matharcadewrecker.netlify.app → app.loadGame('match') → click 2 pairs",
+        targetSelector: "#match-grid .card",
+        verdict: `game started — score: ${score}`,
+        outcome: "pass",
+        screenshotThumb: shot,
+      }),
+    };
+  }
+
+  if (phase === "detach") {
+    // Close CDP connection WITHOUT releasing the session — heap stays alive in Steel cloud
+    conn._closed = true;
+    await conn.browser.close();
+    record("browser.close (no release)", { sessionId: (sessionId || "").slice(0, 8) + "…" }, "session still alive in Steel cloud");
+    return {
+      done: false,
+      phase: "other-work",
+      savedScore,
+      evidence: card({
+        action: "browser.close() — CDP disconnect only, no sessions.release()",
+        targetSelector: "n/a",
+        verdict: "Steel session still running in cloud — JS heap preserved",
+        outcome: "pass",
+      }),
+    };
+  }
+
+  if (phase === "other-work") {
+    // Reconnect to same session, open second page, do unrelated work
+    const ws = websocketUrl || `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    conn._closed = true;
+    await conn.browser.close().catch(() => {});
+
+    const fresh = await connect(ws, sessionId);
+    const secondPage = await fresh.browser.newPage();
+    await secondPage.goto("https://httpbin.org/json", { waitUntil: "domcontentloaded", timeout: 8000 });
+    const shot = await thumb(secondPage);
+    fresh._closed = true;
+    await fresh.browser.close();
+
+    return {
+      done: false,
+      phase: "resume",
+      savedScore,
+      evidence: card({
+        action: "re-connect same sessionId → open second page → fetch httpbin.org/json",
+        targetSelector: "body",
+        verdict: "agent did independent work while game session stayed alive",
+        outcome: "pass",
+        screenshotThumb: shot,
+      }),
+    };
+  }
+
+  if (phase === "resume") {
+    // Third connect — prove heap survived
+    const ws = websocketUrl || `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    conn._closed = true;
+    await conn.browser.close().catch(() => {});
+
+    const fresh = await connect(ws, sessionId);
+    // Find the Math Match tab (first page in context)
+    const gamePage = fresh.context.pages().find((p) => p.url().includes("matharcade")) || fresh.page;
+    await gamePage.bringToFront();
+
+    const resumeScore = await gamePage.evaluate(() => matchGame.score).catch(() => null);
+    const heapIntact = resumeScore !== null && resumeScore === savedScore;
+    const shot = await thumb(gamePage);
+
+    // Hand conn off to the finally guard — don't close here, finish phase needs it
+    // Replace outer conn fields so finally block handles cleanup
+    conn.browser = fresh.browser;
+    conn.context = fresh.context;
+    conn._closed = false;
+
+    return {
+      done: false,
+      phase: "finish",
+      savedScore,
+      scoreConfirmed: heapIntact,
+      evidence: card({
+        action: `re-attach via connectOverCDP(same sessionId) → read matchGame.score`,
+        targetSelector: "#match-grid",
+        verdict: heapIntact
+          ? `score before: ${savedScore} / score after: ${resumeScore} → heap intact`
+          : `score mismatch (before: ${savedScore} / after: ${resumeScore})`,
+        outcome: heapIntact ? "pass" : "fail",
+        screenshotThumb: shot,
+        diagnosis: heapIntact ? null : "JS heap may not have survived — score differs",
+      }),
+    };
+  }
+
+  if (phase === "finish") {
+    // Click remaining unmatched cards until all 8 pairs matched
+    let matched = await page.evaluate(() => matchGame.matched).catch(() => 0);
+    let attempts = 0;
+    while (matched < 8 && attempts < 10) {
+      await page.evaluate(() => {
+        const cards = [...document.querySelectorAll("#match-grid .card:not(.matched):not(.flipped)")];
+        if (cards.length >= 2) { cards[0].click(); cards[1].click(); }
+      });
+      await page.waitForTimeout(700);
+      matched = await page.evaluate(() => matchGame.matched).catch(() => matched);
+      attempts++;
+    }
+
+    const shot = await thumb(page);
+    await release(sessionId);
+
+    return {
+      done: true,
+      outcome: matched >= 8 ? "pass" : "fail",
+      evidence: card({
+        action: "click remaining card pairs → sessions.release(sessionId)",
+        targetSelector: "#match-grid .card",
+        verdict: matched >= 8 ? `game complete — all ${matched} pairs matched` : `only ${matched}/8 pairs matched`,
+        outcome: matched >= 8 ? "pass" : "fail",
+        screenshotThumb: shot,
+      }),
+    };
+  }
+
+  return { done: true, outcome: "fail", evidence: card({ action: `unknown phase: ${phase}`, outcome: "fail" }) };
 }
 
 async function genericStep(page, base, meta) {

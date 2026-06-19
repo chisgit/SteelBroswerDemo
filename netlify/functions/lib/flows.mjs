@@ -4,6 +4,7 @@
 // label always matches what the engine is actually doing.
 
 export const ROUTES = ["recaptcha", "turnstile", "hcaptcha", "vision-grid", "bot-wall", "mobile-bug"];
+export const PERSISTENCE_ROUTES = ["math-arcade"];
 
 export const FLOWS = {
   recaptcha: {
@@ -53,6 +54,14 @@ export const FLOWS = {
     apiSnippet: `await client.sessions.create({ dimensions: { width: 390, height: 844 } });`,
     docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
     path: "/gauntlet/mobile-bug.html",
+  },
+  "math-arcade": {
+    title: "Math Arcade — persistent cloud session",
+    feature: "session persistence",
+    proves: "Steel keeps JS heap alive after agent disconnects — re-attach resumes exactly where you left off.",
+    apiSnippet: `// disconnect without releasing\nawait browser.close();\n// ... other work ...\n// reconnect same session\nawait chromium.connectOverCDP(websocketUrl);`,
+    docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
+    path: null,
   },
 };
 
@@ -174,6 +183,14 @@ export const DEMO_RECIPES = {
     routes: ["mobile-bug"],
     overlays: ["none", "reliability"],
     summary: "Baseline proof that a demo can run without a CAPTCHA overlay.",
+  },
+  "persistent-session": {
+    title: "Persistent Cloud Session",
+    baseDemo: "arcade-task",
+    scenario: "simple-impact",
+    routes: ["math-arcade"],
+    overlays: ["none"],
+    summary: "Steel keeps JS heap alive after agent disconnects — re-attach resumes the Math Match game exactly where it left off.",
   },
 };
 
