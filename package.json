@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.22.2",
     "playwright-core": "^1.48.0",

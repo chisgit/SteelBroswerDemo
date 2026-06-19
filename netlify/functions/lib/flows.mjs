@@ -3,8 +3,8 @@
 // Both the live banner (R13) and the U9 technical panel read from here, so the
 // label always matches what the engine is actually doing.
 
-export const ROUTES = ["recaptcha", "turnstile", "hcaptcha", "vision-grid", "bot-wall", "mobile-bug", "stock-predictor"];
-export const PERSISTENCE_ROUTES = ["math-arcade"];
+export const ROUTES = ["recaptcha", "turnstile", "hcaptcha", "vision-grid", "bot-wall", "mobile-bug", "stock-predictor", "login-persist"];
+export const PERSISTENCE_ROUTES = ["math-arcade", "login-persist"];
 
 export const FLOWS = {
   recaptcha: {
@@ -70,6 +70,14 @@ export const FLOWS = {
     apiSnippet: `await page.goto(url);\nawait page.fill('#text_input', ticker);\nawait page.click('button:has-text("Predict")');\nconst shot = await page.screenshot();\nconst text = await page.evaluate(() => document.body.innerText);`,
     docsUrl: "https://docs.steel.dev/overview/sessions-api/overview",
     path: null,
+  },
+  "login-persist": {
+    title: "Browser Profile Persistence — profileId reuse",
+    feature: "profileId persistence",
+    proves: "Log in via localStorage, save the profileId, close the session, restart with the same profileId — the login survives because the browser profile (and its storage) persists.",
+    apiSnippet: `const session1 = await client.sessions.create({ profileId: 'demo-profile' });\n// ... log in, then close ...\nawait client.sessions.release(session1.id);\n// ... restart same profile ...\nconst session2 = await client.sessions.create({ profileId: 'demo-profile' });\n// ... reload page — still logged in`,
+    docsUrl: "https://docs.steel.dev/overview/sessions-api/profiles",
+    path: "/login-persist.html",
   },
 };
 
@@ -207,6 +215,14 @@ export const DEMO_RECIPES = {
     routes: ["stock-predictor"],
     overlays: ["none"],
     summary: "Navigate stockpredictors.onrender.com, enter AAPL, press Predict, take a screenshot and scrape the prediction text — side-by-side proves the agent saw what the model predicted.",
+  },
+  "login-persist": {
+    title: "Browser Profile Persistence",
+    baseDemo: "arcade-task",
+    scenario: "simple-impact",
+    routes: ["login-persist"],
+    overlays: ["none"],
+    summary: "Log in to a local page, save the profileId, restart Steel with the same profile — still logged in. Proves browser state persists.",
   },
 };
 

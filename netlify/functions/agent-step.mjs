@@ -61,6 +61,8 @@ async function runStep({ page, conn, route, phase, base, sessionId, websocketUrl
       return mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedScore, selectedCards);
     case "stock-predictor":
       return stockPredictorStep(page, phase);
+    case "login-persist":
+      return loginPersistStep(page, base, phase, meta);
     default:
       return genericStep(page, base, meta);
   }
@@ -897,6 +899,51 @@ async function stockPredictorStep(page, phase) {
   }
 
   return { done: true, outcome: "fail", evidence: card({ action: `unknown phase: ${phase}`, outcome: "fail" }) };
+}
+
+// Login persistence demo: navigate to page, attempt wrong password, correct it.
+async function loginPersistStep(page, base, phase, meta) {
+  await page.goto(base + meta.path, { waitUntil: "domcontentloaded" });
+
+  // Try wrong password first
+  await page.fill("#email", "demo@steel-demo.com").catch(() => {});
+  await page.fill("#password", "wrong").catch(() => {});
+  await page.click(".btn-login").catch(() => {});
+  await page.waitForTimeout(500);
+
+  // Now correct it
+  await page.fill("#email", "demo@steel-demo.com").catch(() => {});
+  await page.fill("#password", "password123").catch(() => {});
+  await page.click(".btn-login").catch(() => {});
+  await page.waitForTimeout(1000);
+
+  // Check success
+  const loggedIn = await page.$(".logged-in-state.active").catch(() => null);
+  const email = await page.textContent("#displayEmail").catch(() => "");
+  const storage = await page.evaluate(() => localStorage.getItem("auth_user_email")).catch(() => null);
+
+  const success = loggedIn && storage === "demo@steel-demo.com";
+
+  return {
+    done: true,
+    outcome: success ? "pass" : "fail",
+    apiCall: {
+      method: "page.fill + page.click (wrong then right password)",
+      params: { email: "demo@steel-demo.com", wrongPassword: "wrong", rightPassword: "password123" },
+      description: "Attempt login with wrong password, then correct credentials",
+    },
+    evidence: card({
+      action: "fill wrong password → submit → fill correct password → submit → verify localStorage",
+      targetSelector: ".logged-in-state, #displayEmail",
+      verdict: success ? `✓ logged in as ${email} (localStorage: ${storage})` : "login failed",
+      outcome: success ? "pass" : "fail",
+      screenshotThumb: await thumb(page),
+      diagnosis: success ? null : "login submission or state detection failed",
+      recovery: success
+        ? `Proof: browser state (localStorage) now set. Next steps:\n1. Note the session profileId above\n2. Close this Steel session\n3. Create new session with same profileId\n4. Reload /login-persist.html\n5. Still logged in — proves profile persistence`
+        : "reload and retry",
+    }),
+  };
 }
 
 async function genericStep(page, base, meta) {
