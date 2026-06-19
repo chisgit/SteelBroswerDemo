@@ -180,7 +180,7 @@ export const DEMO_RECIPES = {
     title: "Full CAPTCHA gauntlet",
     baseDemo: "arcade-task",
     scenario: "full-gauntlet",
-    routes: ROUTES,
+    routes: ["recaptcha", "turnstile", "hcaptcha", "vision-grid", "bot-wall", "mobile-bug"],
     overlays: ["captcha", "vision", "reliability"],
     summary: "All current challenge overlays in one run.",
   },

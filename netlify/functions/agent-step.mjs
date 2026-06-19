@@ -21,7 +21,17 @@ export const handler = async (event) => {
     const base = baseUrl || BASE || originFrom(event);
 
     console.log(`[step] ${route}/${phase}`);
-    conn = await connect(websocketUrl, sessionId, `chromium.connectOverCDP (${phase})`);
+
+    // math-arcade phases manage their own CDP lifecycle:
+    // - other-work uses plain fetch, no Steel session needed
+    // - resume/finish reconnect themselves with a fresh connect()
+    // - detach and start need the shared connect() normally
+    const skipConnect = route === "math-arcade" && ["other-work", "resume", "finish"].includes(phase);
+    if (!skipConnect) {
+      conn = await connect(websocketUrl, sessionId, `chromium.connectOverCDP (${phase})`);
+    } else {
+      conn = { browser: null, context: null, page: null, _closed: true };
+    }
     const { page } = conn;
 
     const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore });
@@ -340,7 +350,10 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     }
     await page.waitForTimeout(500);
 
-    const score = await page.evaluate(() => matchGame.score).catch(() => 0);
+    const score = await page.evaluate(() => matchGame.score).catch(() => null);
+    if (score === null) {
+      return { done: true, outcome: "fail", evidence: card({ action: "read matchGame.score", verdict: "evaluate failed — game may not have loaded", outcome: "fail" }) };
+    }
     const shot = await thumb(page);
     return {
       done: false,
@@ -379,8 +392,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     // Game session sits dormant in Steel cloud — no CDP client attached, heap fully preserved.
     // We fetch Wikipedia from the serverless function directly — no Steel browser needed.
     // After a 3s pause, we re-attach to prove the session outlived the gap.
-    conn._closed = true;
-    await conn.browser.close().catch(() => {});
+    // (conn.browser is null here — we skipped connect() for this phase intentionally)
 
     record("agent (no Steel session)", { task: "fetch Wikipedia: Card_game strategies" }, "invoking");
     let wikiSummary = "";
@@ -413,11 +425,9 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   if (phase === "resume") {
-    // Re-attach to the ORIGINAL game session — same sessionId, third CDP connect
+    // Re-attach to the ORIGINAL game session — same sessionId, third CDP connect.
+    // conn.browser is null here (we skipped the shared connect() for this phase).
     const ws = `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
-    conn._closed = true;
-    await conn.browser.close().catch(() => {});
-
     const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (resume: re-attach to game session)");
     const gamePage = fresh.context.pages().find((p) => p.url().includes("matharcade")) || fresh.page;
     await gamePage.bringToFront();
@@ -425,11 +435,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     const resumeScore = await gamePage.evaluate(() => matchGame.score).catch(() => null);
     const heapIntact = resumeScore !== null && resumeScore === savedScore;
     const shot = await thumb(gamePage);
-
-    // Pass fresh connection to finally block
-    conn.browser = fresh.browser;
-    conn.context = fresh.context;
-    conn._closed = false;
+    await fresh.browser.close().catch(() => {});
 
     return {
       done: false,
@@ -450,39 +456,48 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   if (phase === "finish") {
-    // Keep flipping sequential card pairs until we get a match (score increases)
-    // Cards are already loaded in the cloud browser — same state as when we left
-    let matched = await page.evaluate(() => matchGame.matched).catch(() => 0);
-    const totalCards = await page.evaluate(() => matchGame.cards.length).catch(() => 16);
-    let cardIdx = 0;
+    // Re-attach to the game session — each Netlify invocation is stateless, so we must reconnect.
+    const ws = `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    let finishConn;
+    try {
+      finishConn = await connect(ws, sessionId, "chromium.connectOverCDP (finish: re-attach)");
+    } catch (err) {
+      await release(sessionId);
+      return { done: true, outcome: "fail", evidence: card({ action: "connectOverCDP (finish)", verdict: `reconnect failed: ${err.message}`, outcome: "fail" }) };
+    }
+    const finishPage = finishConn.context.pages().find((p) => p.url().includes("matharcade")) || finishConn.page;
+    await finishPage.bringToFront();
+
+    let matched = await finishPage.evaluate(() => matchGame.matched).catch(() => 0);
+    const totalCards = await finishPage.evaluate(() => matchGame.cards.length).catch(() => 16);
 
     // Try pairs until we get at least one new match or exhaust attempts
     const maxAttempts = Math.ceil(totalCards / 2);
     for (let attempt = 0; attempt < maxAttempts && matched < 1; attempt++) {
-      await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card:not(.matched)")[idx]?.click();
-      }, 0);
-      await page.waitForTimeout(400);
-      await page.evaluate((idx) => {
-        document.querySelectorAll("#match-grid .card:not(.matched)")[idx]?.click();
-      }, 1);
-      await page.waitForTimeout(800);
-      matched = await page.evaluate(() => matchGame.matched).catch(() => matched);
-      cardIdx += 2;
+      await finishPage.evaluate(() => {
+        document.querySelectorAll("#match-grid .card:not(.matched)")[0]?.click();
+      });
+      await finishPage.waitForTimeout(400);
+      await finishPage.evaluate(() => {
+        document.querySelectorAll("#match-grid .card:not(.matched)")[1]?.click();
+      });
+      await finishPage.waitForTimeout(800);
+      matched = await finishPage.evaluate(() => matchGame.matched).catch(() => matched);
     }
 
-    const finalScore = await page.evaluate(() => matchGame.score).catch(() => 0);
-    const shot = await thumb(page);
+    const finalScore = await finishPage.evaluate(() => matchGame.score).catch(() => 0);
+    const shot = await thumb(finishPage);
+    await finishConn.browser.close().catch(() => {});
     await release(sessionId);
 
     return {
       done: true,
-      outcome: "pass",
+      outcome: matched > 0 ? "pass" : "recovered",
       evidence: card({
         action: "resume game → flip cards → sessions.release(sessionId)",
         targetSelector: "#match-grid .card",
         verdict: `game resumed and completed — final score: ${finalScore}, matches: ${matched}`,
-        outcome: "pass",
+        outcome: matched > 0 ? "pass" : "recovered",
         screenshotThumb: shot,
       }),
     };
@@ -494,7 +509,6 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
 // Stock Predictor: 3-phase lifecycle through stockpredictors.onrender.com
 //  start → predict → extract → done
 const STOCK_URL = "https://stockpredictors.onrender.com";
-const WARMUP_URL = "https://stockpredictors.com";
 
 async function stockPredictorStep(page, phase) {
   if (phase === "start") {
