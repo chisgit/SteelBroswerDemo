@@ -492,6 +492,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
 
     return {
       done: true,
+      released: true,
       outcome: matched > 0 ? "pass" : "recovered",
       evidence: card({
         action: "resume game → flip cards → sessions.release(sessionId)",
