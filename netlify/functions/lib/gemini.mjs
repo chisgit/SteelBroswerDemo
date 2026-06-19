@@ -18,6 +18,7 @@ function model() {
  * @returns {Promise<{matches:number[], verdicts:{id:number, isMatch:boolean}[]}>}
  */
 export async function classifyTiles(tiles, target) {
+  console.log(`[classifyTiles] tiles=${tiles.length} target=${target}`);
   const parts = [
     {
       text:
@@ -31,8 +32,11 @@ export async function classifyTiles(tiles, target) {
     parts.push({ inlineData: { data: t.b64, mimeType: t.mime || "image/jpeg" } });
   }
 
+  console.log(`[classifyTiles] calling gemini...`);
   const res = await model().generateContent({ contents: [{ role: "user", parts }] });
+  console.log(`[classifyTiles] response text:`, res.response.text());
   const verdicts = parseJson(res.response.text()).verdicts || [];
+  console.log(`[classifyTiles] verdicts=${verdicts.length} matches=${verdicts.filter((v) => v.isMatch).length}`);
   return {
     verdicts,
     matches: verdicts.filter((v) => v.isMatch).map((v) => v.id),
