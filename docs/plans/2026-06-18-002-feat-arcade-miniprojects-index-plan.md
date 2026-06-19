@@ -31,6 +31,52 @@ otherwise lose.
 
 ---
 
+## ⚠️ Current State — the demo is ~80% already built
+
+**Critical:** these mini-project docs were first drafted as if greenfield. They are **not** — most of the
+demo is already implemented and committed. Read each per-project doc as a **gap-fill / harden / verify**
+plan against existing code, not a build-from-zero plan. Verified working-tree state (git log + file read,
+2026-06-18):
+
+| Unit (master 001) | State | Where |
+|---|---|---|
+| U1 scaffold (netlify.toml, health fn, env) | **Done, committed** | `netlify/functions/health.js` |
+| U2 gauntlet target pages | **Done, committed** | `public/gauntlet/*.html` (all 6 routes + images + `manifest.json`) |
+| U3 Steel session lib + pre-warm | **Done, committed** | `netlify/functions/lib/steel.mjs`, `session-create.js` |
+| U4 step engine (observe→decide→act) | **Done, committed** | `agent-step.js` (all 6 routes), `lib/{gemini,evidence,flows}.mjs` |
+| U5 control UI + FE loop | **Done, committed** | `public/{index.html,app.js,styles.css}` |
+| U6 diagnose + recover | **Done, committed** | in `agent-step.js` (hcaptcha delayed-render, vision re-classify) |
+| U7 fleet variance dashboard | **Done, committed** | `fleet-run.js` |
+| U8 bot-wall stealth relaunch + mobile-bug | **Done, committed** | `agent-step.js`, `steel.mjs` `relaunchWithStealth` |
+| U9 self-explaining showcase (R14) **UI** | **NOT built** (in progress — uncommitted `app.js`/`index.html` edits) | backend data ready in `flows.mjs` (`apiSnippet`/`docsUrl`/`proves`) |
+| MP2 lifecycle **via printing-press CLI** | **NOT built** — genuinely new; currently inline in `steel.mjs`/`session-create.js` | — |
+
+**So the real remaining work is:** (1) **R14 showcase UI** — the one unbuilt feature, owned newly by **MP9**
+below; (2) **MP2** — refactor the inline lifecycle into a printing-press-generated CLI (net-new); (3)
+**verify + harden** the built pieces (see Verify checklist). Everything MP1/MP3/MP4/MP5/MP6/MP8 describe is
+largely **already coded** — those docs are now harden/verify references, not build orders.
+
+### Bugs / conflicts found during audit (fix before/while hardening)
+
+- **Import extension mismatch (likely runtime break):** `agent-step.js` imports `./lib/steel.js`,
+  `./lib/flows.js`, etc., but the files on disk are `.mjs`. Verify resolution under the Netlify runtime;
+  fix imports or rename files.
+- **`useProxy` hardwired on** (`steel.mjs` `relaunchWithStealth` → `createSession({stealth:true, useProxy:true})`)
+  but origin **gotcha #1** says proxy may not be free-tier honest. **Verify free-tier `useProxy` works**; if
+  not, drop it and recover with `stealthConfig` alone (MP7 KTD3).
+- **Bot-wall honesty (gotcha #2):** code recovers by re-navigating with `?stealth=1` — confirm the wall page
+  actually gates on a signal Steel changes, not just the query flag, or the beat is a no-op (MP1 U4 / MP7 KTD4).
+
+### Verify checklist (the genuine open risks, all built-but-unverified)
+
+- One agent step fits Netlify's **10s** sync cap (001 R-risk1 — the dominant constraint).
+- `useProxy` free-tier honesty (gotcha #1).
+- Vision-grid: confirm tiles are clicked **by DOM id** (`#tile-N`) per 001 KTD4 — **they are** in
+  `agent-step.js:127`; `sessions.computer` coordinate clicking stays **Deferred**.
+- Gemini free-tier rate limits under the parallel fleet (MP8).
+
+---
+
 ## Mini-Projects
 
 | # | Plan doc | Cluster | Primary R-IDs | Depends on |
@@ -43,9 +89,46 @@ otherwise lose.
 | MP6 | `2026-06-18-008-feat-mp6-diagnose-evidence-plan.md` | Diagnose-from-evidence (failure → why) | R8, R14 | MP3, MP4 |
 | MP7 | `2026-06-18-009-feat-mp7-recover-plan.md` | Recover (in-session retry + session re-create stealth/proxy/mobile) | R8, R12 | MP3, MP6 |
 | MP8 | `2026-06-18-010-feat-mp8-fleet-dashboard-plan.md` | Parallel fleet + variance dashboard | R9 | MP5, MP6, MP7 |
+| **MP9** | `2026-06-18-011-feat-mp9-showcase-plan.md` | **Self-explaining technical showcase UI (R14)** — the one unbuilt feature | R14 (R4/R13 surfaced) | MP4, MP5 |
 
 Cross-cutting R1 (one Netlify deploy), R3 (free tiers), R10 (secrets in env) are honored by every project;
 the U1 scaffold in the master plan / existing `netlify/` already establishes the deploy shape.
+
+**R14 ownership correction:** R14 (self-explaining showcase) is owned by **MP9**, not MP6. MP6 only owns the
+*diagnosis legibility* slice of R14; the header/architecture line + per-flow live API-snippet panel is MP9.
+`flows.mjs` already carries the `apiSnippet`/`docsUrl`/`proves` data MP9's UI renders.
+
+---
+
+## Model-Tier Routing
+
+Every implementation unit across the mini-projects carries a **model tier** marking the weakest model that
+can execute it safely:
+
+- **🟢 Less-capable (Haiku-class)** — mechanical, self-contained, exact verified paths, no design judgment.
+  Safe to delegate down.
+- **🟡 Capable (Sonnet-class)** — multi-file, must infer existing patterns, moderate decisions, integration
+  wiring. The default for most units.
+- **🔴 Highly-capable (Opus-class)** — design judgment, external probing/verification, deliberately
+  under-specified, or high cost-of-getting-it-wrong. Do not delegate down.
+
+**Per-mini-project dominant tier** (highest-tier unit it contains):
+
+| MP | Dominant tier | Why |
+|----|---------------|-----|
+| MP1 Target site | 🔴 | Bot-wall honesty signal (gotcha #2) + plausible mobile bug (gotcha #3) are design judgment; static pages within it are 🟢/🟡 |
+| MP2 Lifecycle CLI | 🔴 | Printing-press generator workflow is novel + deferred-to-impl; refactor-from-inline needs judgment |
+| MP3 Agent loop | 🔴 | 10s-cap timing probe + loop-model decision (KTD1) is highly-capable; the lib units are 🟡 |
+| MP4 Viewer | 🟡 | Iframe embed + replay seek; cross-origin framing fallback is a small judgment call |
+| MP5 CAPTCHA gauntlet | 🟡 | Mostly built; hardening/verify. Vision path decided. Banner is 🟢 |
+| MP6 Diagnose | 🟡 | Built; evidence-bundle + taxonomy prompt tuning is 🟡 |
+| MP7 Recover | 🔴 | `useProxy` free-tier probe (gotcha #1) + honest-recover verification are highly-capable |
+| MP8 Fleet dashboard | 🟡 | Built; fleet-size sizing vs limits (gotcha #4) is a 🟡 decision |
+| MP9 Showcase UI | 🟡 | Net-new UI; data source exists; infer `app.js` patterns. U1 legend is 🟢 |
+
+**Routing guidance:** delegate 🟢 units to Haiku freely; run 🟡 units on Sonnet; reserve 🔴 units for Opus
+(or escalate via `opus-advisor` before a less-capable model attempts them). The 🔴 units cluster around the
+four open risks in the Verify checklist — they are the genuine judgment work, not transcription.
 
 ---
 

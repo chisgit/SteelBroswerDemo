@@ -76,6 +76,7 @@ public/
 ## Implementation Units
 
 ### U1. Game shell + level routing
+- **Model tier:** 🟢 Less-capable — static HTML/CSS/JS, exact paths, no judgment. *(Note: game already live at `matharcardewrecker.netlify.app` — verify before creating.)*
 - **Goal:** A self-contained arcade site with a "win" condition the agent can pursue.
 - **Requirements:** R2, R5
 - **Files:** `public/arcade/index.html`, `public/arcade/arcade.css`, `public/arcade/arcade.js`
@@ -90,6 +91,7 @@ public/
 - **Verification:** opening the site in a browser shows the game; success element appears on win.
 
 ### U2. Failure modes (a) flaky + (b) selector drift
+- **Model tier:** 🟡 Capable — needs query-param knob design + "plausible not planted" judgment.
 - **Goal:** Two in-page recoverable failures with tunable knobs.
 - **Requirements:** R12 (arc support)
 - **Dependencies:** U1
@@ -104,6 +106,7 @@ public/
 - **Verification:** query params reproducibly trigger each failure.
 
 ### U3. Mode (c) CAPTCHA route — provider widgets, test keys
+- **Model tier:** 🟢 Less-capable — copy provider test-key embed snippets; pages already exist (`recaptcha.html`, `turnstile.html`).
 - **Goal:** A page mounting reCAPTCHA v2 + Turnstile using official always-pass TEST keys.
 - **Requirements:** R5, R11
 - **Dependencies:** U1
@@ -117,6 +120,7 @@ public/
 - **Verification:** both widgets render and accept the always-pass flow.
 
 ### U4. Mode (d) simulated bot wall (stealth-gated)
+- **Model tier:** 🔴 Highly-capable — the gate signal must be one Steel's `stealthConfig` *actually* flips, or the recover is a no-op lie (gotcha #2). Design judgment + verification, under-specified on purpose.
 - **Goal:** An "Access Denied" page that lets a stealthed session through.
 - **Requirements:** R12
 - **Dependencies:** U1
@@ -133,6 +137,7 @@ public/
 - **Verification:** toggling the signal flips denied ↔ content; "simulated" label visible.
 
 ### U5. Mode (e) mobile-only layout break
+- **Model tier:** 🔴 Highly-capable — must be a *plausible* responsive defect, not `if(mobile) throw` (gotcha #3). Judgment on what reads as a real bug.
 - **Goal:** A responsive bug that breaks the agent's selector path only at mobile dimensions.
 - **Requirements:** R12
 - **Dependencies:** U1
@@ -146,6 +151,7 @@ public/
 - **Verification:** resizing across the breakpoint reproducibly breaks/fixes the path.
 
 ### U6. Vision-grid target page
+- **Model tier:** 🟢 Less-capable — fixed NxN grid, stable `#tile-N` ids, bundled images + `manifest.json` (already exist in `public/gauntlet/`). Mechanical.
 - **Goal:** The image-grid the Gemini-vision climax (MP5) solves per tile.
 - **Requirements:** R5
 - **Dependencies:** U1

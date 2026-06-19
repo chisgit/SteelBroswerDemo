@@ -3,75 +3,155 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Steel CAPTCHA Gauntlet — a live tour of the Steel Sessions API</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <title>Steel Demo Hub</title>
+  <style>
+    :root {
+      --bg: #080c18;
+      --panel: #111a30;
+      --panel2: #0d1426;
+      --ink: #eef2fb;
+      --muted: #93a0c2;
+      --accent: #5b8cff;
+      --ok: #3ddc97;
+      --bad: #ff6b6b;
+      --warn: #ffc857;
+      --line: #223054;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: radial-gradient(1200px 600px at 70% -10%, #16213f 0%, var(--bg) 55%);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .hero {
+      padding: 3rem clamp(1rem, 4vw, 3rem) 1rem;
+      text-align: center;
+    }
+    .hero h1 { margin: 0 0 0.5rem; font-size: clamp(1.8rem, 4vw, 2.6rem); }
+    .hero p { color: var(--muted); max-width: 56ch; margin: 0 auto 1.5rem; }
+
+    .arch {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; align-items: center;
+      font-size: 0.82rem; color: var(--muted); margin-bottom: 2rem;
+    }
+    .arch .node {
+      background: var(--panel); border: 1px solid var(--line);
+      padding: 0.3rem 0.6rem; border-radius: 7px; color: var(--ink);
+    }
+    .arch .arrow { color: var(--accent); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      padding: 0 clamp(1rem, 4vw, 3rem) 3rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      transition: border-color 0.15s;
+    }
+    .card:hover { border-color: var(--accent); }
+    .card .icon { font-size: 1.6rem; margin-bottom: 0.5rem; }
+    .card h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+    .card .desc { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.8rem; flex: 1; }
+    .card .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.8rem; }
+    .card .tag {
+      font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted);
+    }
+    .card .tag.feature { border-color: var(--accent); color: var(--accent); }
+    .card .btn {
+      display: inline-block;
+      background: var(--accent); color: #fff; border: 0; border-radius: 9px;
+      padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+      text-align: center;
+    }
+    .card .btn:hover { opacity: 0.9; text-decoration: none; }
+
+    footer {
+      text-align: center; padding: 1.5rem; color: var(--muted); font-size: 0.8rem;
+    }
+  </style>
 </head>
 <body>
   <header class="hero">
-    <h1>Steel CAPTCHA Gauntlet</h1>
-    <p class="recipe-kicker" id="recipe-title">Simple impact demo</p>
-    <p class="tagline" id="tagline">
-      A live, autonomous tour of the <strong>Steel Sessions API</strong>. A Gemini-Flash agent
-      drives a real Steel cloud browser through a gauntlet of challenges we own — each flow
-      demonstrates one Steel capability, named on screen as it runs.
+    <h1>Steel Demo Hub</h1>
+    <p>
+      A set of live, autonomous demos powered by the <strong>Steel Sessions API</strong>.
+      Each demo drives a real Steel cloud browser through a challenge — pick one below.
     </p>
-    <p class="recipe-summary" id="recipe-summary"></p>
-    <div class="launcher">
-      <div>
-        <h2>Choose demo</h2>
-        <div class="recipe-picker" id="recipe-picker"></div>
-      </div>
-      <div class="setup" id="setup-panel">
-        <div class="setup-title" id="setup-title">Checking Steel session...</div>
-        <div class="setup-body" id="setup-body">Pre-warming browser.</div>
-      </div>
-    </div>
-    <!-- Architecture line (R14) — filled/confirmed in U9 -->
-    <div class="arch" id="arch">
-      <span class="node">Netlify static UI</span><span class="arrow">→</span>
-      <span class="node">Netlify Function (agent loop)</span><span class="arrow">→</span>
-      <span class="node">Steel cloud browser (CDP)</span><span class="arrow">→</span>
+    <div class="arch">
+      <span class="node">Static UI</span><span class="arrow">→</span>
+      <span class="node">Netlify Function (agent)</span><span class="arrow">→</span>
+      <span class="node">Steel cloud browser</span><span class="arrow">→</span>
       <span class="node">Gemini Flash (vision)</span>
     </div>
-    <!-- Flow → Steel feature legend (R14): cold-visitor map of what each flow demos -->
-    <div class="legend" id="legend"></div>
   </header>
 
-  <main>
-    <!-- LEFT: live view + banner -->
-    <section class="panel">
-      <div class="banner" id="banner">
-        <span class="play">▶</span>
-        <span id="banner-title">Idle — pre-warming a Steel session…</span>
-        <span class="feature" id="banner-feature"></span>
+  <div class="grid">
+    <div class="card">
+      <div class="icon">🤖</div>
+      <h3>"I'm not a robot"</h3>
+      <p class="desc">Steel auto-solves a real reCAPTCHA v2 and Cloudflare Turnstile. Click Run, watch it breeze through the checkbox.</p>
+      <div class="tags">
+        <span class="tag feature">solveCaptcha</span>
+        <span class="tag">reCAPTCHA</span>
+        <span class="tag">Turnstile</span>
       </div>
-      <iframe class="viewer" id="viewer" title="Live Steel session"></iframe>
+      <a class="btn" href="/gauntlet-ui.html?recipe=captcha-only">Launch</a>
+    </div>
 
-      <div class="controls">
-        <button class="run" id="run-btn" disabled>Run demo</button>
-        <button class="ghost" id="fleet-btn" disabled>Run parallel fleet</button>
+    <div class="card">
+      <div class="icon">👁️</div>
+      <h3>Visual Challenge</h3>
+      <p class="desc">Gemini vision classifies an image grid ("select all dogs") and clicks the right tiles — agent intelligence beyond auto-solve.</p>
+      <div class="tags">
+        <span class="tag feature">Gemini vision</span>
+        <span class="tag">DOM actions</span>
       </div>
+      <a class="btn" href="/gauntlet-ui.html?recipe=vision-only">Launch</a>
+    </div>
 
-      <div class="chips" id="chips"></div>
-
-      <!-- technical snippet for the active flow (U9 / R14) -->
-      <div class="snippet" id="snippet">
-        <pre id="snippet-code">// the Steel API call for the active flow appears here</pre>
-        <p class="proves" id="snippet-proves"></p>
-        <p class="proves"><a id="snippet-docs" href="#" target="_blank" rel="noopener">Steel docs ↗</a></p>
+    <div class="card">
+      <div class="icon">🔄</div>
+      <h3>Reliability Arc</h3>
+      <p class="desc">The agent hits a delayed render, a bot wall, and a mobile layout bug — diagnoses each failure and recovers.</p>
+      <div class="tags">
+        <span class="tag feature">diagnose</span>
+        <span class="tag feature">recover</span>
+        <span class="tag">stealth</span>
       </div>
-    </section>
+      <a class="btn" href="/gauntlet-ui.html?recipe=reliability">Launch</a>
+    </div>
 
-    <!-- RIGHT: evidence feed + dashboard -->
-    <section class="panel">
-      <h2>Agent evidence</h2>
-      <div class="evidence" id="evidence"></div>
+    <div class="card">
+      <div class="icon">🏁</div>
+      <h3>Full Gauntlet</h3>
+      <p class="desc">Every route back-to-back: captcha, vision, bot wall, mobile bug — then a parallel fleet variance finale.</p>
+      <div class="tags">
+        <span class="tag feature">all features</span>
+        <span class="tag">fleet</span>
+      </div>
+      <a class="btn" href="/gauntlet-ui.html">Launch</a>
+    </div>
+  </div>
 
-      <h2 style="margin-top:1.2rem">Fleet variance</h2>
-      <div class="dash" id="dash"><p style="color:var(--muted)">Run the parallel fleet to populate.</p></div>
-    </section>
-  </main>
-
-  <script src="/app.js" type="module"></script>
+  <footer>
+    Powered by <a href="https://steel.dev" target="_blank" rel="noopener">Steel.dev</a> &middot;
+    <a href="https://docs.steel.dev" target="_blank" rel="noopener">API docs</a>
+  </footer>
 </body>
 </html>

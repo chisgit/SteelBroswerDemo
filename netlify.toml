@@ -18,8 +18,5 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
-# SPA-ish fallback for the control UI (gauntlet routes are real files, served first).
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Landing page is at /index.html (default).
+# Demo pages at /gauntlet-ui.html, etc. are served directly as static files.

@@ -67,6 +67,7 @@ flowchart TD
 ## Implementation Units
 
 ### U1. In-session recovery (modes a/b)
+- **Model tier:** 🟡 Capable — bounded retry + re-query selector; built pattern in `hcaptchaStep`/`visionGridStep`.
 - **Goal:** Retry flaky + selector-drift failures without a new session.
 - **Requirements:** R8
 - **Dependencies:** MP3 (loop), MP6 (mode tag)
@@ -81,6 +82,7 @@ flowchart TD
 - **Verification:** modes a/b reliably recover in-session on the arcade site.
 
 ### U2. Session re-create recovery (modes d/e)
+- **Model tier:** 🔴 Highly-capable — `useProxy` free-tier honesty probe (gotcha #1; `relaunchWithStealth` currently hardwires it) + honest bot-wall verification (gotcha #2). Judgment + external probing, high cost-of-wrong.
 - **Goal:** Recover bot-wall + mobile by creating a new session with adjusted opts.
 - **Requirements:** R8, R12
 - **Dependencies:** MP2 (lifecycle create/release), MP6 (mode tag), MP1 U4/U5

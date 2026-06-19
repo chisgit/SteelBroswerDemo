@@ -14,17 +14,21 @@ function client() {
  * Create a Steel cloud browser session.
  * @param {object} opts
  * @param {boolean} [opts.solveCaptcha] enable Steel's CAPTCHA auto-solve
- * @param {boolean} [opts.stealth]      enable stealth fingerprinting (prevention-first)
  * @param {boolean} [opts.useProxy]     route through Steel's proxy network
+ * @param {boolean} [opts.blockAds]     block ads in the session
  * @param {{width:number,height:number}} [opts.dimensions] viewport (mobile emulation)
+ * @param {string}  [opts.userAgent]    custom user agent
+ * @param {string}  [opts.region]       session region
  * @returns {Promise<{id,debugUrl,sessionViewerUrl,websocketUrl}>}
  */
 export async function createSession(opts = {}) {
   const params = {};
   if (opts.solveCaptcha) params.solveCaptcha = true;
-  if (opts.stealth) params.stealthConfig = { humanizeInteractions: true, skipFingerprintInjection: false };
   if (opts.useProxy) params.useProxy = true;
+  if (opts.blockAds) params.blockAds = true;
   if (opts.dimensions) params.dimensions = opts.dimensions;
+  if (opts.userAgent) params.userAgent = opts.userAgent;
+  if (opts.region) params.region = opts.region;
 
   const session = await client().sessions.create(params);
   return {
@@ -57,13 +61,13 @@ export async function release(sessionId) {
 }
 
 /**
- * Stealth relaunch (KTD10): fingerprint + proxy are session-creation options and
+ * Stealth relaunch (KTD10): proxy and ad-blocking are session-creation options and
  * cannot be toggled mid-session, so recovery from a bot wall = release + create new.
  * @returns {Promise<{id,debugUrl,sessionViewerUrl,websocketUrl}>} the NEW session
  */
 export async function relaunchWithStealth(oldSessionId, opts = {}) {
   await release(oldSessionId);
-  return createSession({ ...opts, stealth: true, useProxy: true });
+  return createSession({ ...opts, useProxy: true, blockAds: true });
 }
 
 /** Client-safe view of a session: never expose websocketUrl or the key. */

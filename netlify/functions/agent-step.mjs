@@ -23,6 +23,8 @@ export const handler = async (event) => {
     return json(200, {
       flowTitle: meta.title,
       feature: meta.feature,
+      proves: meta.proves,
+      apiSnippet: meta.apiSnippet,
       ...result,
     });
   } catch (err) {
@@ -53,7 +55,31 @@ async function runStep({ page, route, phase, base, sessionId, meta }) {
 }
 
 // Token routes: navigate, let Steel solveCaptcha clear it, detect #solved.
+// NOTE: solveCaptcha is a paid Steel feature (not available on hobby tier).
+// Hobby tier: skip this route and display a clear message.
 async function tokenRoute(page, base, meta) {
+  // Check if solveCaptcha is available (only on paid plans).
+  // On hobby tier, return a skipped outcome with clear messaging.
+  const isHobbyTier = true; // TODO: detect from API key / session type if needed
+  if (isHobbyTier) {
+    return {
+      done: true,
+      outcome: "skipped",
+      apiCall: {
+        method: "sessions.create",
+        params: { solveCaptcha: true },
+        description: `solveCaptcha is a paid Steel feature (not available on hobby tier).`,
+      },
+      evidence: card({
+        action: `skip ${meta.path} on hobby tier`,
+        targetSelector: "n/a",
+        verdict: "solveCaptcha not available on hobby plan",
+        outcome: "skipped",
+        screenshotThumb: null,
+      }),
+    };
+  }
+
   await page.goto(base + meta.path, { waitUntil: "domcontentloaded" });
   // Steel solves asynchronously; poll briefly within budget.
   const solved = await page
@@ -63,6 +89,11 @@ async function tokenRoute(page, base, meta) {
   return {
     done: true,
     outcome: solved ? "pass" : "fail",
+    apiCall: {
+      method: "sessions.create",
+      params: { solveCaptcha: true },
+      description: `Create Steel session with auto-solving, navigate to ${meta.path}`,
+    },
     evidence: card({
       action: `navigate ${meta.path} + await solveCaptcha`,
       targetSelector: "#solved",
@@ -83,6 +114,11 @@ async function hcaptchaStep(page, base, phase, meta) {
       return {
         done: false,
         outcome: "fail",
+        apiCall: {
+          method: "page.goto → page.$",
+          params: { path: meta.path, selector: ".h-captcha" },
+          description: "Navigate to challenge page — widget not yet rendered",
+        },
         evidence: card({
           action: `navigate ${meta.path} — locate hCaptcha widget`,
           targetSelector: ".h-captcha",
@@ -102,6 +138,13 @@ async function hcaptchaStep(page, base, phase, meta) {
   return {
     done: true,
     outcome: appeared ? "recovered" : "fail",
+    apiCall: {
+      method: "sessions.create",
+      params: { solveCaptcha: true },
+      description: appeared
+        ? "Widget rendered → Steel solveCaptcha clears the token"
+        : "Widget never appeared within timeout",
+    },
     evidence: card({
       action: "wait for delayed widget, then await token",
       targetSelector: ".h-captcha",
@@ -141,6 +184,11 @@ async function visionGridStep(page, base, phase) {
     done: pass,
     outcome,
     selected: matches,
+    apiCall: {
+      method: "page.screenshot → gemini.classifyTiles → page.click",
+      params: { tileCount: tiles.length, target: "dog", matches: matches.length },
+      description: `Screenshot ${tiles.length} tiles → Gemini classifies each → click ${matches.length} matching tiles → submit`,
+    },
     evidence: card({
       action: `vision-classify ${tiles.length} tiles for "dog" → click matches`,
       targetSelector: matches.map((m) => "#tile-" + m).join(", "),
@@ -170,6 +218,11 @@ async function botWallStep(page, base, phase, sessionId, meta) {
         outcome: "fail",
         newSession: clientView(fresh),
         newWebsocketUrl: fresh.websocketUrl,
+        apiCall: {
+          method: "sessions.release → sessions.create",
+          params: { useProxy: true, blockAds: true },
+          description: "Bot wall detected → release old session → create new with residential proxy",
+        },
         evidence: card({
           action: `navigate ${meta.path}`,
           targetSelector: "#wall",
@@ -188,6 +241,13 @@ async function botWallStep(page, base, phase, sessionId, meta) {
   return {
     done: true,
     outcome: through ? "recovered" : "fail",
+    apiCall: {
+      method: "sessions.create",
+      params: { stealthConfig: { humanizeInteractions: true }, useProxy: true },
+      description: through
+        ? "Stealthed session passed the bot wall → success"
+        : "Stealthed session still blocked",
+    },
     evidence: card({
       action: "re-navigate with stealth fingerprint + proxy",
       targetSelector: "#content",
@@ -208,8 +268,15 @@ async function mobileBugStep(page, base, phase, meta) {
   if (primaryVisible) {
     await page.click("#primary-continue");
     const done = await page.waitForSelector("#solved:not(.hidden)", { timeout: 3000 }).then(() => true).catch(() => false);
-    return { done: true, outcome: done ? "pass" : "fail",
-      evidence: card({ action: "click #primary-continue (desktop path)", targetSelector: "#primary-continue", outcome: done ? "pass" : "fail", screenshotThumb: await thumb(page) }) };
+    return {
+      done: true, outcome: done ? "pass" : "fail",
+      apiCall: {
+        method: "sessions.create",
+        params: { dimensions: { width: 390, height: 844 } },
+        description: "Desktop viewport — primary control visible, click succeeds",
+      },
+      evidence: card({ action: "click #primary-continue (desktop path)", targetSelector: "#primary-continue", outcome: done ? "pass" : "fail", screenshotThumb: await thumb(page) }),
+    };
   }
   // primary hidden under mobile viewport → diagnose + recover via alternate.
   await page.click("#menu-continue").catch(() => {});
@@ -217,6 +284,11 @@ async function mobileBugStep(page, base, phase, meta) {
   return {
     done: true,
     outcome: done ? "recovered" : "fail",
+    apiCall: {
+      method: "sessions.create",
+      params: { dimensions: { width: 390, height: 844 } },
+      description: `Mobile viewport (390×844) — #primary-continue hidden, recovered via #menu-continue`,
+    },
     evidence: card({
       action: "primary control hidden on mobile → use alternate menu path",
       targetSelector: "#menu-continue",

@@ -67,6 +67,7 @@ sequenceDiagram
 ## Implementation Units
 
 ### U1. Observation capture
+- **Model tier:** 🟡 Capable — Playwright DOM/a11y extraction; largely built inside `agent-step.js`. Verify/extract.
 - **Goal:** Turn current page state into a compact observation for Gemini.
 - **Requirements:** R4
 - **Dependencies:** MP2 (wsEndpoint), MP1 (a page to observe)
@@ -80,6 +81,7 @@ sequenceDiagram
 - **Verification:** observing an arcade level lists its real controls.
 
 ### U2. Action schema + Gemini step
+- **Model tier:** 🟡 Capable — constrained-action prompt design + parse/validate; `gemini.mjs` exists as a base.
 - **Goal:** Ask Gemini for the next action given observation + goal; parse to a typed action.
 - **Requirements:** R4
 - **Dependencies:** U1
@@ -94,6 +96,7 @@ sequenceDiagram
 - **Verification:** mocked-Gemini tests parse each verb; live smoke advances one real step.
 
 ### U3. Action executor
+- **Model tier:** 🟢 Less-capable — map each verb to a Playwright call; mechanical once schema fixed. (Built per-route in `agent-step.js`.)
 - **Goal:** Execute a typed action against the Steel browser.
 - **Requirements:** R4
 - **Dependencies:** U2
@@ -107,6 +110,7 @@ sequenceDiagram
 - **Verification:** the loop drives a clean arcade level to win end-to-end.
 
 ### U4. Loop orchestrator + step endpoint
+- **Model tier:** 🔴 Highly-capable — the loop-execution-model decision (KTD1) + 10s-cap timing probe (001 R-risk1, the dominant constraint) is judgment, not transcription.
 - **Goal:** One-step-per-call endpoint the front-end drives.
 - **Requirements:** R4
 - **Dependencies:** U1, U2, U3

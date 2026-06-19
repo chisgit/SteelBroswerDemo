@@ -4,15 +4,18 @@ import { createSession, clientView } from "./lib/steel.mjs";
 
 export const handler = async (event) => {
   try {
+    console.log("[session-create] STEEL_API_KEY present:", !!process.env.STEEL_API_KEY);
+    console.log("[session-create] GEMINI_API_KEY present:", !!process.env.GEMINI_API_KEY);
     const body = event.body ? JSON.parse(event.body) : {};
     const session = await createSession({
-      solveCaptcha: true,                 // token routes solved by Steel
-      stealth: Boolean(body.stealth),     // default off; bot-wall recovery turns it on
+      solveCaptcha: Boolean(body.solveCaptcha),  // hobby tier defaults to false
+      stealth: Boolean(body.stealth),
       useProxy: Boolean(body.useProxy),
-      dimensions: body.dimensions,        // set for the mobile fleet agent
+      dimensions: body.dimensions,
     });
     return json(200, clientView(session));
   } catch (err) {
+    console.error("[session-create] Error:", err.message);
     return json(err.message.includes("STEEL_API_KEY") ? 500 : 502, {
       error: "session_create_failed",
       detail: err.message, // message only — never the key

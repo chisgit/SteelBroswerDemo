@@ -49,6 +49,7 @@ diagnosis must be grounded in real captured evidence, not a canned string.
 ## Implementation Units
 
 ### U1. Evidence capture on failure
+- **Model tier:** 🟡 Capable — bundle DOM/screenshot/history; built via `evidence.mjs` `card()`. Verify Steel log method names (deferred).
 - **Goal:** Bundle the evidence available at the failure frame.
 - **Requirements:** R8
 - **Dependencies:** MP3 U3 (action/state history), MP4 (recording/frame)
@@ -63,6 +64,7 @@ diagnosis must be grounded in real captured evidence, not a canned string.
 - **Verification:** each staged failure mode produces a populated bundle.
 
 ### U2. Diagnosis generation
+- **Model tier:** 🟡 Capable — Gemini over evidence → cause + taxonomy enum; prompt tuning so cause cites concrete evidence. Partially built (inline diagnosis strings in `agent-step.js`).
 - **Goal:** Turn the evidence bundle into a specific human-readable cause + a taxonomy tag.
 - **Requirements:** R8, R14
 - **Dependencies:** U1
@@ -79,6 +81,7 @@ diagnosis must be grounded in real captured evidence, not a canned string.
 - **Verification:** each staged mode diagnoses to the correct taxonomy tag.
 
 ### U3. Diagnosis surfacing in UI
+- **Model tier:** 🟢 Less-capable — render diagnosis payload + hand frame marker to MP4. Light.
 - **Goal:** Show the diagnosis legibly beside the (freeze-framed) replay.
 - **Requirements:** R14
 - **Dependencies:** U2, MP4 U2

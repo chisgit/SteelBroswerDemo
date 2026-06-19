@@ -62,6 +62,7 @@ flowchart LR
 ## Implementation Units
 
 ### U1. Fleet orchestrator
+- **Model tier:** 🟡 Capable — built (`fleet-run.js`); hardening is fleet-size sizing vs concurrency cap + browser-hour budget (gotcha #4), a bounded decision.
 - **Goal:** Launch N agents concurrently, each assigned a distinct mode/config.
 - **Requirements:** R9
 - **Dependencies:** MP3 (loop), MP5/MP6/MP7 (per-agent route+diagnose+recover), MP2 (create configs)
@@ -78,6 +79,7 @@ flowchart LR
 - **Verification:** fleet runs end-to-end with honest per-agent variance.
 
 ### U2. Variance dashboard
+- **Model tier:** 🟢 Less-capable — render per-agent status grid + aggregate rate from a known payload shape.
 - **Goal:** Live dashboard of attempts / passes / failures / recovered / success rate.
 - **Requirements:** R9
 - **Dependencies:** U1

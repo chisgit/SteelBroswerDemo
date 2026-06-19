@@ -58,6 +58,7 @@ remote round trips. This MP generates that CLI and wires the app's lifecycle ops
 ## Implementation Units
 
 ### U1. Generate the Sessions-API CLI via printing-press
+- **Model tier:** 🔴 Highly-capable — novel generator workflow (printing-press), Go toolchain check, exact command shapes deferred-to-impl. Cost-of-wrong high.
 - **Goal:** A working agent-native CLI over Steel Sessions API.
 - **Requirements:** R4
 - **Files:** `cli/` (generated output tree — exact layout set by generator), `package.json` (add install
@@ -75,6 +76,7 @@ remote round trips. This MP generates that CLI and wires the app's lifecycle ops
 - **Verification:** create→list→get→release round-trips against Steel free tier; mirror reflects state.
 
 ### U2. Lifecycle wrapper module (app ↔ CLI)
+- **Model tier:** 🟡 Capable — wrap CLI behind typed functions; refactor of existing inline `steel.mjs`/`session-create.js`. Pattern-following.
 - **Goal:** A thin app-side module the rest of the system calls for lifecycle ops.
 - **Requirements:** R4, R10
 - **Dependencies:** U1
@@ -90,6 +92,7 @@ remote round trips. This MP generates that CLI and wires the app's lifecycle ops
 - **Verification:** wrapper unit tests pass; a real create→release works from a Netlify function locally.
 
 ### U3. Lifecycle CLI agent-native outputs (skill / MCP)
+- **Model tier:** 🟡 Capable — package generator-emitted artifacts; depends on what U1 produces (unknown shape until run).
 - **Goal:** Expose the generated skill/MCP output so an agent (or the user) can run lifecycle ops natively.
 - **Requirements:** R4
 - **Dependencies:** U1

@@ -34,6 +34,7 @@ viewer is the proof surface; the recorded replay is the evidence surface for dia
 ## Implementation Units
 
 ### U1. Live viewer iframe
+- **Model tier:** 🟡 Capable — iframe embed + not-ready/ended states; cross-origin framing fallback is a small judgment.
 - **Goal:** Embed the live session so it streams in the UI.
 - **Requirements:** R7
 - **Dependencies:** MP2 (session provides viewer/debug URL)
@@ -48,6 +49,7 @@ viewer is the proof surface; the recorded replay is the evidence surface for dia
 - **Verification:** during a live run, the iframe shows the browser acting.
 
 ### U2. Recorded replay + freeze-frame
+- **Model tier:** 🟢 Less-capable — surface `sessionViewerUrl` + optional seek; behavior is Steel-provided.
 - **Goal:** Show the recorded session, paused on the failure frame.
 - **Requirements:** R7
 - **Dependencies:** U1, MP6 (failure frame marker)

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo — Steel Demo Hub</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <nav style="padding:0.5rem clamp(1rem,4vw,3rem);font-size:0.82rem;border-bottom:1px solid var(--line)">
+    <a href="/" style="color:var(--muted)">&larr; Demo Hub</a>
+  </nav>
+
+  <!-- top banner -->
+  <div class="banner" id="banner">
+    <span class="play">▶</span>
+    <span id="banner-title">Pre-warming a Steel session…</span>
+    <span class="feature" id="banner-feature"></span>
+  </div>
+
+  <main class="demo-layout">
+
+    <!-- LEFT COLUMN: live browser viewer -->
+    <section class="demo-left">
+      <div class="viewer-wrap">
+        <div class="viewer-label">
+          <span class="dot live"></span> Live Steel Cloud Browser
+          <span class="session-id" id="session-id"></span>
+        </div>
+        <iframe class="viewer" id="viewer" title="Live Steel session"></iframe>
+      </div>
+
+      <!-- route progress chips -->
+      <div class="chips" id="chips"></div>
+
+      <!-- controls -->
+      <div class="controls">
+        <button class="run" id="run-btn" disabled>Run demo</button>
+        <button class="ghost" id="fleet-btn" disabled>Run parallel fleet</button>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: API call info + what this proves -->
+    <section class="demo-right">
+      <div class="api-panel" id="api-panel">
+        <div class="api-header">Steel API Call</div>
+        <div class="api-method" id="api-method">sessions.create()</div>
+        <pre class="api-params" id="api-params">{ "solveCaptcha": true }</pre>
+        <div class="api-desc" id="api-desc">Creating a cloud browser via Steel's Sessions API.</div>
+      </div>
+
+      <div class="prove-panel" id="prove-panel">
+        <div class="prove-header">What this proves</div>
+        <div class="prove-body" id="prove-body">Steel creates a real cloud browser session on demand.</div>
+        <a class="prove-link" id="prove-link" href="#" target="_blank" rel="noopener">Steel docs ↗</a>
+      </div>
+
+      <div class="session-panel" id="session-panel">
+        <div class="session-header">Session</div>
+        <div class="session-row"><span class="slabel">ID</span><code class="sval" id="sval-id">—</code></div>
+        <div class="session-row"><span class="slabel">Status</span><span class="sval" id="sval-status">connecting…</span></div>
+        <div class="session-row"><span class="slabel">Steel SDK</span><code class="sval">steel-sdk (sessions.create)</code></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- evidence feed at bottom -->
+  <section class="evidence-section">
+    <h2>Agent Evidence Log</h2>
+    <div class="evidence" id="evidence"></div>
+  </section>
+
+  <!-- fleet dashboard (hidden until used) -->
+  <section class="evidence-section" style="margin-top:-1rem">
+    <h2>Fleet Variance</h2>
+    <div class="dash" id="dash"><p style="color:var(--muted);font-size:0.85rem">Run the parallel fleet to populate.</p></div>
+  </section>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
