@@ -21,7 +21,7 @@ export const handler = async (event) => {
     const base = baseUrl || BASE || originFrom(event);
 
     console.log(`[step] ${route}/${phase}`);
-    conn = await connect(websocketUrl, sessionId);
+    conn = await connect(websocketUrl, sessionId, `chromium.connectOverCDP (${phase})`);
     const { page } = conn;
 
     const result = await runStep({ page, conn, route, phase, base, sessionId, websocketUrl, meta, savedScore });
@@ -382,8 +382,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     conn._closed = true;
     await conn.browser.close().catch(() => {});
 
-    const fresh = await connect(ws, sessionId);
-    record("chromium.connectOverCDP (other-work)", { sessionId: (sessionId || "").slice(0, 8) + "…" }, "connected — opening search tab");
+    const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (other-work: search tab in same session)");
     const searchPage = await fresh.browser.newPage();
     await searchPage.goto(
       "https://duckduckgo.com/?q=memory+match+card+game+strategies",
@@ -414,7 +413,7 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     conn._closed = true;
     await conn.browser.close().catch(() => {});
 
-    const fresh = await connect(ws, sessionId);
+    const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (resume: re-attach to game session)");
     const gamePage = fresh.context.pages().find((p) => p.url().includes("matharcade")) || fresh.page;
     await gamePage.bringToFront();
 

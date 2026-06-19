@@ -75,16 +75,16 @@ export async function releaseAllSessions() {
 }
 
 /** Connect Playwright to a live Steel session over CDP (server-side only). */
-export async function connect(websocketUrl, sessionId) {
+export async function connect(websocketUrl, sessionId, label = "chromium.connectOverCDP") {
   const ws =
     websocketUrl ||
     `wss://connect.steel.dev?apiKey=${STEEL_API_KEY}&sessionId=${sessionId || ""}`;
   const displayWs = ws.replace(/apiKey=[^&]+/, "apiKey=…");
-  record("chromium.connectOverCDP", { sessionId: sanitize(sessionId), websocketUrl: displayWs }, "invoking");
+  record(label, { sessionId: sanitize(sessionId), websocketUrl: displayWs }, "invoking");
   const t0 = Date.now();
   const browser = await chromium.connectOverCDP(ws);
   const ms = Date.now() - t0;
-  record("chromium.connectOverCDP", { sessionId: sanitize(sessionId), websocketUrl: displayWs, pages: browser.contexts().length }, "connected", `${ms}ms`);
+  record(label, { sessionId: sanitize(sessionId), websocketUrl: displayWs, pages: browser.contexts().length }, "connected", `${ms}ms`);
   const context = browser.contexts()[0] || (await browser.newContext());
   const page = context.pages()[0] || (await context.newPage());
   return { browser, context, page, _wsUrl: displayWs };
