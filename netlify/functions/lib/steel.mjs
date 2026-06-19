@@ -41,7 +41,19 @@ export async function createSession(opts = {}) {
 
   record("sessions.create", params, "invoking");
   const t0 = Date.now();
-  const session = await client().sessions.create(params);
+  let session;
+  try {
+    session = await client().sessions.create(params);
+  } catch (err) {
+    // Hobby plan: 429 = concurrent session limit. Release all stale sessions and retry once.
+    if (err.message && err.message.includes("429")) {
+      record("sessions.create", {}, "429 — releasing stale sessions, retrying");
+      await releaseAllSessions();
+      session = await client().sessions.create(params);
+    } else {
+      throw err;
+    }
+  }
   const ms = Date.now() - t0;
   record("sessions.create", { sessionId: sanitize(session.id), status: session.status }, "ok", `${ms}ms`);
   return {
@@ -50,6 +62,16 @@ export async function createSession(opts = {}) {
     sessionViewerUrl: session.sessionViewerUrl,
     websocketUrl: session.websocketUrl,
   };
+}
+
+/** Release all live sessions — used to clear the hobby-plan concurrent limit on 429. */
+export async function releaseAllSessions() {
+  try {
+    await client().sessions.releaseAll({});
+    record("sessions.releaseAll", {}, "ok");
+  } catch (_) {
+    // best-effort
+  }
 }
 
 /** Connect Playwright to a live Steel session over CDP (server-side only). */
