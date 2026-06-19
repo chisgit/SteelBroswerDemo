@@ -375,34 +375,39 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
   }
 
   if (phase === "other-work") {
-    // Re-connect to the SAME Steel session (game tab is still open), open a second tab,
-    // search "memory match card game strategies", screenshot results, close the search tab.
-    // The game tab stays alive — card state and score unchanged in the JS heap.
-    const ws = `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${sessionId}`;
+    // Agent does independent work WITHOUT touching the Steel session at all.
+    // Game session sits dormant in Steel cloud — no CDP client attached, heap fully preserved.
+    // We fetch Wikipedia from the serverless function directly — no Steel browser needed.
+    // After a 3s pause, we re-attach to prove the session outlived the gap.
     conn._closed = true;
     await conn.browser.close().catch(() => {});
 
-    const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (other-work: search tab in same session)");
-    const searchPage = await fresh.browser.newPage();
-    await searchPage.goto(
-      "https://duckduckgo.com/?q=memory+match+card+game+strategies",
-      { waitUntil: "domcontentloaded", timeout: 10000 }
-    );
-    const shot = await thumb(searchPage);
-    await searchPage.close();
-    fresh._closed = true;
-    await fresh.browser.close();
+    record("agent (no Steel session)", { task: "fetch Wikipedia: Card_game strategies" }, "invoking");
+    let wikiSummary = "";
+    try {
+      const wikiRes = await fetch(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Card_game",
+        { headers: { "User-Agent": "SteelDemo/1.0" }, signal: AbortSignal.timeout(6000) }
+      );
+      const wikiJson = await wikiRes.json();
+      wikiSummary = wikiJson.extract?.slice(0, 200) || "summary unavailable";
+    } catch (_) {
+      wikiSummary = "fetch failed (non-critical)";
+    }
+    record("agent (no Steel session)", { task: "Wikipedia fetch done — waiting 3s" }, "done");
+
+    // Deliberate 3s pause — session sits completely idle, making the story tangible
+    await new Promise((r) => setTimeout(r, 3000));
 
     return {
       done: false,
       phase: "resume",
       savedScore,
       evidence: card({
-        action: "re-connect same session → new tab → DuckDuckGo 'memory match card game strategies' → close tab",
-        targetSelector: "body",
-        verdict: "agent searched for card strategies while game tab stayed alive in Steel cloud",
+        action: "serverless fetch → Wikipedia 'Card game' — no Steel session used",
+        targetSelector: "n/a",
+        verdict: `game session sat idle in Steel cloud for 3s | "${wikiSummary.slice(0, 100)}…"`,
         outcome: "pass",
-        screenshotThumb: shot,
       }),
     };
   }
