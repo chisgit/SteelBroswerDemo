@@ -3,7 +3,6 @@ node_modules/
 .netlify/
 .playwright-mcp/
 .claude/settings.local.json
-.claude/skills/steel-developer/
 public/gauntlet/images/*.jpg
 public/gauntlet/images/*.png
 public/gauntlet/images/*.svg
