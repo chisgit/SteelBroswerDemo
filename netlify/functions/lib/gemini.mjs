@@ -33,8 +33,17 @@ export async function classifyTiles(tiles, target) {
   }
 
   console.log(`[classifyTiles] calling gemini...`);
-  const res = await model().generateContent({ contents: [{ role: "user", parts }] });
-  console.log(`[classifyTiles] response text:`, res.response.text());
+  let res;
+  try {
+    res = await Promise.race([
+      model().generateContent({ contents: [{ role: "user", parts }] }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini timeout after 8s")), 8000))
+    ]);
+    console.log(`[classifyTiles] response text:`, res.response.text());
+  } catch (err) {
+    console.error(`[classifyTiles] ERROR:`, err.message);
+    throw err;
+  }
   const verdicts = parseJson(res.response.text()).verdicts || [];
   console.log(`[classifyTiles] verdicts=${verdicts.length} matches=${verdicts.filter((v) => v.isMatch).length}`);
   return {

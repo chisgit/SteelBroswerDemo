@@ -10,12 +10,15 @@ const BASE = process.env.GAUNTLET_BASE_URL || "";
 
 export const handler = async (event) => {
   let conn;
+  let route = "?";
   try {
-    const { sessionId, websocketUrl, route, phase = "start", baseUrl } =
-      JSON.parse(event.body || "{}");
+    const parsed = JSON.parse(event.body || "{}");
+    route = parsed.route || "unknown";
+    const { sessionId, websocketUrl, phase = "start", baseUrl } = parsed;
     const meta = flowMeta(route);
     const base = baseUrl || BASE || originFrom(event);
 
+    console.log(`[step] ${route}/${phase}`);
     conn = await connect(websocketUrl, sessionId);
     const { page } = conn;
 
@@ -28,6 +31,7 @@ export const handler = async (event) => {
       ...result,
     });
   } catch (err) {
+    console.error(`[step] ERROR ${route}:`, err.message);
     return json(502, { error: "agent_step_failed", detail: err.message, done: true, outcome: "fail" });
   } finally {
     if (conn?.browser) await conn.browser.close().catch(() => {});
