@@ -339,9 +339,10 @@ if (phase === "start") {
      const triedPairs = new Set();
      let matchFound = false;
      let matchedPair = null;
-     const maxAttempts = Math.ceil(totalCards / 2); // Reasonable upper bound
+    // Keep trying until we find a match
+    const maxSafetyAttempts = 1000; // Safety limit to prevent infinite loop
      
-     for (let attempt = 0; attempt < maxAttempts && !matchFound; attempt++) {
+    for (let attempt = 0; attempt < maxSafetyAttempts && !matchFound; attempt++) {
        // Get a random pair of unmatched cards we haven't tried yet
        const pair = await chooseRandomCardPair(page, triedPairs);
        if (!pair) break; // No more available pairs
