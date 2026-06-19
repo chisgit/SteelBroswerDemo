@@ -427,6 +427,9 @@ async function mathArcadeStep(conn, page, phase, sessionId, websocketUrl, savedS
     conn._closed = true;
     await conn.browser.close().catch(() => {});
 
+    // Visible pause so the user can see: browser closed → then new browser opens
+    await new Promise((r) => setTimeout(r, 4000));
+
     const fresh = await connect(ws, sessionId, "chromium.connectOverCDP (resume: re-attach to game session)");
     const gamePage = fresh.context.pages().find((p) => p.url().includes("matharcade")) || fresh.page;
     await gamePage.bringToFront();
@@ -705,15 +708,15 @@ async function stockPredictorStep(page, phase) {
     await page.mouse.click(clickX, clickY);
     record("stockPredictor.predict", { phase: "click-predict", x: clickX, y: clickY }, "ok", "Predict button clicked");
 
-    // Step 4: Wait for prediction to render (Streamlit can take 30-60s on free tier)
-    await page.waitForTimeout(35000);
+    // Step 4: Brief wait for Streamlit to register click and start computation
+    await page.waitForTimeout(3000);
 
     return {
       done: false,
       phase: "extract",
       step: "predict",
-      action: 'Filled ticker "AAPL" → NVIDIA found Predict button → clicked → waiting for prediction',
-      detail: `NVIDIA located Predict button at ${element.x_percent}%, ${element.y_percent}% (confidence: ${element.confidence}%). Clicked and waiting 35s for results.`,
+      action: 'Filled ticker "AAPL" → NVIDIA found Predict button → clicked → starting prediction',
+      detail: `NVIDIA located Predict button at ${element.x_percent}%, ${element.y_percent}% (confidence: ${element.confidence}%). Clicked; extract phase will poll for results.`,
       evidence: card({
         action: 'fill ticker "AAPL" → NVIDIA vision click Predict',
         targetSelector: "button",
@@ -726,8 +729,31 @@ async function stockPredictorStep(page, phase) {
   }
 
   if (phase === "extract") {
-    record("stockPredictor.extract", { phase: "wait-for-render" }, "invoking", "Waiting 10s for prediction to fully render");
-    await page.waitForTimeout(10000);
+    // Poll for prediction results — Streamlit free tier can take 30-60s
+    // Wait for specific content indicating prediction is done
+    record("stockPredictor.extract", { phase: "wait-for-prediction" }, "invoking", "Polling for prediction results (Market Open/Close, Linear Regression, XGBoost, chart)");
+    
+    const predictionReady = await page.waitForFunction(
+      () => {
+        const text = document.body.innerText.toLowerCase();
+        // Check for key prediction result indicators
+        return text.includes("market open") && 
+               text.includes("market close") && 
+               (text.includes("linear regression") || text.includes("xgboost")) &&
+               text.includes("chart");
+      },
+      { timeout: 90000, polling: 5000 }
+    ).then(() => true).catch(() => false);
+    
+    if (!predictionReady) {
+      record("stockPredictor.extract", { phase: "wait-for-prediction" }, "fail", "Timeout waiting for prediction results after 90s");
+      // Still try to extract what we have
+    } else {
+      record("stockPredictor.extract", { phase: "wait-for-prediction" }, "ok", "Prediction results detected");
+    }
+    
+    // Additional wait for chart/canvas to fully render
+    await page.waitForTimeout(3000);
     
     record("stockPredictor.extract", { phase: "screenshot" }, "invoking", "Capturing full-page screenshot");
     const shot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: true });
