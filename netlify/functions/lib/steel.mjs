@@ -79,14 +79,15 @@ export async function connect(websocketUrl, sessionId) {
   const ws =
     websocketUrl ||
     `wss://connect.steel.dev?apiKey=${STEEL_API_KEY}&sessionId=${sessionId || ""}`;
-  record("chromium.connectOverCDP", { sessionId: sanitize(sessionId) }, "invoking");
+  const displayWs = ws.replace(/apiKey=[^&]+/, "apiKey=…");
+  record("chromium.connectOverCDP", { sessionId: sanitize(sessionId), websocketUrl: displayWs }, "invoking");
   const t0 = Date.now();
   const browser = await chromium.connectOverCDP(ws);
   const ms = Date.now() - t0;
-  record("chromium.connectOverCDP", { pages: browser.contexts().length }, "connected", `${ms}ms`);
+  record("chromium.connectOverCDP", { sessionId: sanitize(sessionId), websocketUrl: displayWs, pages: browser.contexts().length }, "connected", `${ms}ms`);
   const context = browser.contexts()[0] || (await browser.newContext());
   const page = context.pages()[0] || (await context.newPage());
-  return { browser, context, page };
+  return { browser, context, page, _wsUrl: displayWs };
 }
 
 /** Release (tear down) a session. Best-effort; never throws into the caller. */
