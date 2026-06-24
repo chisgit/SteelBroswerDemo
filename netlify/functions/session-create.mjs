@@ -20,6 +20,7 @@ export const handler = async (event) => {
     return json(err.message.includes("STEEL_API_KEY") ? 500 : 502, {
       error: "session_create_failed",
       detail: err.message, // message only — never the key
+      apiLog: popLog(),
     });
   }
 };
